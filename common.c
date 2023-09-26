@@ -10,10 +10,22 @@ void DieWithUserMessage(const char *msg, const char *detail) {
     exit(EXIT_FAILURE);
 }
 
+void DieWithSystemMessage(const char *msg){
+  perror(msg);
+  exit(EXIT_FAILURE);
+}
+
+//logica para receber mensagem do user e aplicar comandos ao board
 char *computeCommand(char *command, struct action *action) {
-    char *response = 'a';
     char *token = strtok(command, " ");
-    return response;
+    char *response = "message received: ";
+    char *buffer = (char*) malloc(1+strlen(token)+strlen(response)); //TESTE: apagar
+
+    strcpy(buffer,response); //TESTE: apagar
+    strcat(buffer, token); //TESTE: apagar
+    return buffer; //TESTE: apagar
+
+    // return response;
 }
 
 int server_sockaddr_init(const char *proto, const char *portstr, struct sockaddr_storage *storage) {

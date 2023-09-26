@@ -4,11 +4,11 @@
 
   Documentação do trabalho está contida no PDF na raíz do projeto   
   
-  ## O que está pronto 🔥  
+  ## Done 🔥  
   - Estabelecimento da conexão cliente/servidor
+  - Envio de Mensagens
 
   ## To Do 🚀  
-  - Adicionar envio das mensagens
-  - Adicionar funcionalidade pra inicializar o tabuleiro do campo minado
+  - Adicionar leitura do input para criar o board
   - Estabelecer lógica do jogo
   - Adicionar verifações para erros de cliente/server
