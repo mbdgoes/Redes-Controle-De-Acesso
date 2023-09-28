@@ -1,6 +1,7 @@
 #include "common.h"
 
 #define BUFSIZE 500
+#define BOARD_SIZE 4
 
 void DieWithUserMessage(const char *msg, const char *detail) {
     fputs(msg, stderr);
@@ -107,4 +108,17 @@ int addrparse(const char *addrstr, const char *portstr, struct sockaddr_storage 
         memcpy(&(addr6->sin6_addr), &inaddr6, sizeof(inaddr6));
         return 0;
     }
+}
+
+void initializeBoard(struct gameSetup *gameSetup, const char* filename){
+    FILE* file = fopen(filename, "r");
+    if(file == NULL) perror("error: empty file");
+
+    for(int i = 0; i < BOARD_SIZE; i++){
+        for(int j = 0; j < BOARD_SIZE; j++){
+            fscanf(file, "%d,", &gameSetup->initialBoard[i][j]);
+            gameSetup->currBoard[i][j] = gameSetup->initialBoard[i][j];
+        }
+    }
+
 }

@@ -29,6 +29,9 @@ int main(int argc, char *argv[]) {
     char addrstr[BUFSIZE];
     addrtostr(addr, addrstr, BUFSIZE);
 
+    struct gameSetup game;
+    initializeBoard(&game, argv[3]);
+
     while (1) {
         struct sockaddr_storage cstorage;
         struct sockaddr *caddr = (struct sockaddr *)(&cstorage);  // Client address
@@ -50,7 +53,7 @@ int main(int argc, char *argv[]) {
 
             char *response;
             response = computeCommand(rcvdMessage, &action);
-            size_t numBytesSent = send(csock, response, strlen(response), 0);
+            send(csock, response, strlen(response), 0);
         }
 
         close(csock);
