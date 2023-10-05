@@ -35,37 +35,43 @@ int main(int argc, char *argv[]) {
     int csock;
 
     while (1) {
-        struct sockaddr_storage cstorage;
-        struct sockaddr *caddr = (struct sockaddr *)(&cstorage);  // Client address
-        socklen_t caddrlen = sizeof(cstorage);
-        csock = accept(s, caddr, &caddrlen);
-        char caddrstr[BUFSIZE];
-        addrtostr(caddr, caddrstr, BUFSIZE);
-        printf("[log] connection from %s\n", caddrstr);
+    struct sockaddr_storage cstorage;
+    struct sockaddr *caddr = (struct sockaddr *)(&cstorage);  // Client address
+    socklen_t caddrlen = sizeof(cstorage);
+    csock = accept(s, caddr, &caddrlen);
+    char caddrstr[BUFSIZE];
+    addrtostr(caddr, caddrstr, BUFSIZE);
+    printf("[log] connection from %s\n", caddrstr);
 
-        //TODO: Inserir logica para iniciar o campo minado em action
-        struct action action;
+    // TODO: Inserir logica para iniciar o campo minado em action
+    struct action action;
 
-        while (1) {
-            // printf("teste\n");
-            // char rcvdMessage[BUFSIZE];
-            // memset(rcvdMessage, 0, BUFSIZE);
+    while (1) {
+        // printf("teste\n");
+        // char rcvdMessage[BUFSIZE];
+        // memset(rcvdMessage, 0, BUFSIZE);
 
-            size_t numBytesRcvd = recv(csock, &receivedData, sizeof(struct action), 0);
+        size_t numBytesRcvd = recv(csock, &receivedData, sizeof(struct action), 0);
 
-            printf("msg: %d\n", receivedData.type);
-
-            char response[BUFSIZE];
-            
-            strcpy(response, "kekw");
-            size_t numBytesSent = send(csock, response, strlen(response),0);
-
-            // response = computeCommand(rcvdMessage, &action, &game);
-            // strcpy(response,"Recebido");
-            // send(csock, response, strlen(response), 0);
-            close(csock);
+        if (numBytesRcvd <= 0) {
+            // Client disconnected or error occurred, break out of the inner loop.
+            break;
         }
 
+        printf("msg: %d\n", receivedData.type);
+
+        char response[BUFSIZE];
+
+        strcpy(response, "kekw");
+        size_t numBytesSent = send(csock, response, strlen(response), 0);
+
+        // response = computeCommand(rcvdMessage, &action, &game);
+        // strcpy(response,"Recebido");
+        // send(csock, response, strlen(response), 0);
+    }
+
+    // Close the client socket after processing its request.
+    close(csock);
     }
     exit(EXIT_SUCCESS);
 }
