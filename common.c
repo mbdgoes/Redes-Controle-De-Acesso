@@ -16,15 +16,36 @@ void DieWithSystemMessage(const char *msg){
   exit(EXIT_FAILURE);
 }
 
+char* convertBoard(int board[4][4]){
+    char response[BUFSIZE] = "";
+
+    for(int i = 0; i < BOARD_SIZE; i++){
+        for(int j = 0; j < BOARD_SIZE; j++){
+            if(board[i][j] == -2){
+                strcat(response, "-\t");
+            }
+        }
+        strcat(response,"\n");
+    }
+    char *res;
+    res = response;
+    return res;
+}
+
 //logica para receber mensagem do user e aplicar comandos ao board
-char *computeCommand(char *command, struct action *action) {
+char *computeCommand(char *command, struct action *action, struct gameSetup *game) {
     char *token = strtok(command, " ");
     char *response = "message received: ";
-    char *buffer = (char*) malloc(1+strlen(token)+strlen(response)); //TESTE: apagar
 
-    strcpy(buffer,response); //TESTE: apagar
-    strcat(buffer, token); //TESTE: apagar
-    return buffer; //TESTE: apagar
+    if(strcmp(token, "start") == 0){
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                action->board[i][j] = game->currBoard[i][j];
+            }
+        }
+        response = convertBoard(action->board);
+        return response;
+    }
 
     // return response;
 }
@@ -117,8 +138,9 @@ void initializeBoard(struct gameSetup *gameSetup, const char* filename){
     for(int i = 0; i < BOARD_SIZE; i++){
         for(int j = 0; j < BOARD_SIZE; j++){
             fscanf(file, "%d,", &gameSetup->initialBoard[i][j]);
-            gameSetup->currBoard[i][j] = gameSetup->initialBoard[i][j];
+            gameSetup->currBoard[i][j] = -2;
         }
     }
 
 }
+

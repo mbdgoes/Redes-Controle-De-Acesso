@@ -31,12 +31,14 @@ int main(int argc, char *argv[]) {
 
     struct gameSetup game;
     initializeBoard(&game, argv[3]);
+    struct action receivedData;
+    int csock;
 
     while (1) {
         struct sockaddr_storage cstorage;
         struct sockaddr *caddr = (struct sockaddr *)(&cstorage);  // Client address
         socklen_t caddrlen = sizeof(cstorage);
-        int csock = accept(s, caddr, &caddrlen);
+        csock = accept(s, caddr, &caddrlen);
         char caddrstr[BUFSIZE];
         addrtostr(caddr, caddrstr, BUFSIZE);
         printf("[log] connection from %s\n", caddrstr);
@@ -45,18 +47,25 @@ int main(int argc, char *argv[]) {
         struct action action;
 
         while (1) {
-            char rcvdMessage[BUFSIZE];
-            memset(rcvdMessage, 0, BUFSIZE);
-            size_t numBytesRcvd = recv(csock, rcvdMessage, BUFSIZE - 1, 0);
+            // printf("teste\n");
+            // char rcvdMessage[BUFSIZE];
+            // memset(rcvdMessage, 0, BUFSIZE);
 
-            printf("[msg] %s, %d bytes: %s", caddrstr, (int)numBytesRcvd,rcvdMessage);
+            size_t numBytesRcvd = recv(csock, &receivedData, sizeof(struct action), 0);
 
-            char *response;
-            response = computeCommand(rcvdMessage, &action);
-            send(csock, response, strlen(response), 0);
+            printf("msg: %d\n", receivedData.type);
+
+            char response[BUFSIZE];
+            
+            strcpy(response, "kekw");
+            size_t numBytesSent = send(csock, response, strlen(response),0);
+
+            // response = computeCommand(rcvdMessage, &action, &game);
+            // strcpy(response,"Recebido");
+            // send(csock, response, strlen(response), 0);
+            close(csock);
         }
 
-        close(csock);
     }
     exit(EXIT_SUCCESS);
 }

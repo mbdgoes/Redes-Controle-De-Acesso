@@ -32,7 +32,7 @@ int addrparse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 void addrtostr(const struct sockaddr *addr, char *str, size_t strsize);
 
 void initializeBoard(struct gameSetup *gameSetup, const char* filename);
-char *computeCommand(char *command, struct action *action);
+char *computeCommand(char *command, struct action *action, struct gameSetup *game);
 
 
 
