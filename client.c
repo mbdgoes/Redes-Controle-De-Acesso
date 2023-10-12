@@ -12,14 +12,13 @@
 #define BUFSIZE 500
 static const int MAXPENDING = 5;
 
-void computeMessage(struct action *sentMessage, char command[BUFSIZE]){
-  char startCommand[BUFSIZE];
-  strcpy(startCommand,"start");
-  // if(strcmp(startCommand,command) == 0){
-    sentMessage->type = 77;
+void computeInput(struct action *sentMessage, char command[BUFSIZE]){
+
+  if(strcmp(command,"start") == 0){
+    sentMessage->type = 0;
     return;
-  // }
-  // return;
+  }
+  return;
 }
 
 int main(int argc, char *argv[])
@@ -51,12 +50,12 @@ int main(int argc, char *argv[])
   while (1){
     //logica do envio da mensagem -> passar mensagem pra action
     char command[BUFSIZE];
-    fgets(command,BUFSIZE - 1, stdin);
+    scanf("%s",command);
 
-    //implementar o computeMessage da seguinte maneira: ler o comando passado pelo cliente
+    //implementar o computeInput da seguinte maneira: ler o comando passado pelo cliente
     //armazenar o valor de type de acordo com o comando e enviar a estrutura para o server
     //o server pega o tipo e as coordenadas, faz as alteracoes e retorna o board necessario
-    computeMessage(&sentMessage, command);
+    computeInput(&sentMessage, command);
     // sentMessage.type = 0;
     size_t numBytes = send(sock, &sentMessage, sizeof(struct action), 0);
 
