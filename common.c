@@ -3,6 +3,7 @@
 #define BUFSIZE 500
 #define BOARD_SIZE 4
 
+#define ERROR -1
 #define START 0
 #define REVEAL 1
 #define FLAG 2
@@ -24,50 +25,6 @@ void DieWithUserMessage(const char *msg, const char *detail) {
 void DieWithSystemMessage(const char *msg) {
 	perror(msg);
 	exit(EXIT_FAILURE);
-}
-
-char *convertBoard(int board[4][4]) {
-	char response[BUFSIZE] = "";
-
-	for (int i = 0; i < BOARD_SIZE; i++) {
-		for (int j = 0; j < BOARD_SIZE; j++) {
-			if (board[i][j] == -2) {
-				strcat(response, "-\t");
-			}
-		}
-		strcat(response, "\n");
-	}
-	char *res;
-	res = response;
-	return res;
-}
-
-// logica para receber mensagem do user e aplicar comandos ao board
-void computeCommand(struct action *action, struct action *receivedData, struct gameSetup *game) {
-
-	switch(receivedData->type){
-		case START: 
-			for (int i = 0; i < BOARD_SIZE; i++) {
-				for (int j = 0; j < BOARD_SIZE; j++) {
-					action->board[i][j] = -2;
-				}
-			}
-		break;
-
-		case REVEAL: ;
-			int coordX = receivedData->coordinates[0];
-			int coordY = receivedData->coordinates[1];
-			
-			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE){
-				action->type = 3;
-				action->board[coordX][coordY] = game->initialBoard[coordX][coordY];
-			}
-		break;
-
-		case RESET:
-			fillBoard(action->board,-2); 
-	}
-	return;
 }
 
 int server_sockaddr_init(const char *proto, const char *portstr, struct sockaddr_storage *storage) {
@@ -151,6 +108,94 @@ int addrparse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 	}
 }
 
+int isBomb(int coordX, int coordY, int board[BOARD_SIZE][BOARD_SIZE]){
+	if(board[coordX][coordY] == -1) return 1;
+	return 0;
+}
+
+int checkWin(int coordX, int coordY, int board[BOARD_SIZE][BOARD_SIZE]){
+	int count = 0;
+
+	for(int i = 0; i < BOARD_SIZE; i++){
+		for(int j = 0; j < BOARD_SIZE; j++){
+			if(board[i][j] == -2 || board[i][j] == -3) count++;
+		}
+	}
+
+	if(count == 3) return 1;
+	return 0;
+}
+
+
+// logica para receber mensagem do user e aplicar comandos ao board
+void computeCommand(struct action *action, struct action *receivedData, struct gameSetup *game) {
+	int coordX, coordY;
+
+	switch(receivedData->type){
+		case START: 
+			for (int i = 0; i < BOARD_SIZE; i++) {
+				for (int j = 0; j < BOARD_SIZE; j++) {
+					action->board[i][j] = -2;
+				}
+			}
+			action->type = STATE;
+		break;
+
+		case REVEAL: ;
+			coordX = receivedData->coordinates[0];
+			coordY = receivedData->coordinates[1];
+
+			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE){ //talvez tratar apenas no cliente
+				if(isBomb(coordX,coordY,game->initialBoard)){
+					action->type = GAME_OVER;
+					memcpy(action->board, game->initialBoard, sizeof(action->board));
+				}
+				else{
+					action->board[coordX][coordY] = game->initialBoard[coordX][coordY];
+					
+					if(checkWin(coordX,coordY,action->board)){
+						action->type = WIN;
+						memcpy(action->board, game->initialBoard, sizeof(action->board));
+					}
+					else action->type = STATE;
+				}
+			}else{
+				action->type = ERROR; //talvez remover esse erro? Tratar o erro no cliente (print error)
+			}
+		break;
+
+		case FLAG: ;
+			coordX = receivedData->coordinates[0];
+			coordY = receivedData->coordinates[1];
+
+			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE){
+				action->board[coordX][coordY] = -3;
+			}
+		break;
+
+		case REMOVE_FLAG: ;
+			coordX = receivedData->coordinates[0];
+			coordY = receivedData->coordinates[1];
+
+			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE){
+				action->board[coordX][coordY] = -2;
+			}
+		break;
+
+		case RESET:
+			action->type = STATE;
+			fillBoard(action->board,-2);
+			printf("starting new game\n");
+		break;
+
+		case EXIT:
+			printf("client disconnected\n");
+			action->type = EXIT;
+		break;
+	}
+	return;
+}
+
 void initializeBoard(struct gameSetup *gameSetup, const char *filename) {
 	FILE *file = fopen(filename, "r");
 	if (file == NULL) perror("error: empty file");
@@ -166,9 +211,10 @@ void initializeBoard(struct gameSetup *gameSetup, const char *filename) {
 void printBoard(int board[BOARD_SIZE][BOARD_SIZE]){
 	for (int i = 0; i < BOARD_SIZE; i++) {
 		for (int j = 0; j < BOARD_SIZE; j++) {
-			if(board[i][j] == -2) printf("%c\t",'-');
-			else if(board[i][j] == -1) printf("%c\t",'*');
-			else printf("%d\t",board[i][j]);
+			if(board[i][j] == -1) printf("%c\t\t",'*');
+			else if(board[i][j] == -2) printf("%c\t\t",'-');
+			else if(board[i][j] == -3) printf("%c\t\t",'>');
+			else printf("%d\t\t",board[i][j]);
 		}
 		printf("\n");
 	}
@@ -180,4 +226,16 @@ void fillBoard(int board[BOARD_SIZE][BOARD_SIZE], int num){
 			board[i][j] = num;
 		}
 	}
+}
+
+int* getCoordinates(char* coordChar){
+	int* result = (int*)malloc(2*sizeof(int));
+
+	char* coordinate = strtok(coordChar, ",");
+
+	for(int i = 0; i < 2 && coordinate != NULL; i++){
+		result[i] = atoi(coordinate);
+		coordinate = strtok(NULL, ",");
+	}
+	return result;
 }

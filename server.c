@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
 		csock = accept(s, caddr, &caddrlen);
 		char caddrstr[BUFSIZE];
 		addrtostr(caddr, caddrstr, BUFSIZE);
-		printf("[log] connection from %s\n", caddrstr);
+		printf("client connected\n");
 
 		struct action action;
 
@@ -59,8 +59,6 @@ int main(int argc, char *argv[]) {
 				break;
 			}
 
-			if(receivedData.coordinates[0] == 1) printf("coordenada: %d\n", receivedData.coordinates[0]);
-			else printf("msg: %d\n", receivedData.type);
 			computeCommand(&action,&receivedData,&game);
 			size_t numBytesSent = send(csock, &action, sizeof(struct action), 0);
 		}

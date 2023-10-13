@@ -25,32 +25,36 @@ void computeInput(struct action *sentMessage, char command[BUFSIZE]) {
 	if (strcmp(inputs[0], "start") == 0) {
 		sentMessage->type = 0;
 		return;
-	} else if (strcmp(inputs[0], "reveal") == 0) {
+	}
+	else if (strcmp(inputs[0], "reveal") == 0) {
 		sentMessage->type = 1;
-		int coordinates[2];
+		int* coordinates = getCoordinates(inputs[1]);
 
-		char* coordinate = strtok(inputs[1], ",");
-		for(int i = 0; i < 2 && coordinate != NULL; i++){
-			coordinates[i] = atoi(coordinate);
-			coordinate = strtok(NULL, ",");
-		}
-		if(coordinates[0]> 3 || coordinates[1] > 3) printf("%s","error: invalid cell\n");
-		sentMessage->coordinates[0] = coordinates[0];
-		sentMessage->coordinates[1] = coordinates[1];
+		if(coordinates[0] > 3 || coordinates[1] > 3) printf("%s","error: invalid cell\n");
+		memcpy(sentMessage->coordinates, coordinates,sizeof(sentMessage->coordinates));
 		return;
-	} else if (strcmp(inputs[0], "flag") == 0) {
+	} 
+	else if (strcmp(inputs[0], "flag") == 0) {
 		sentMessage->type = 2;
+		int* coordinates = getCoordinates(inputs[1]);
+		memcpy(sentMessage->coordinates, coordinates,sizeof(sentMessage->coordinates));
 		return;
-	} else if (strcmp(inputs[0], "state") == 0) {
-		sentMessage->type = 3;
-		return;
-	} else if (strcmp(inputs[0], "remove_flag") == 0) {
+	}
+	else if (strcmp(inputs[0], "remove_flag") == 0) {
 		sentMessage->type = 4;
+		int* coordinates = getCoordinates(inputs[1]);
+		memcpy(sentMessage->coordinates, coordinates,sizeof(sentMessage->coordinates));
 		return;
-	} else if (strcmp(inputs[0], "reset") == 0) {
+	} 
+	else if (strcmp(inputs[0], "reset") == 0) {
 		sentMessage->type = 5;
 		return;
-	} else {
+	} 
+	else if (strcmp(inputs[0], "exit") == 0) {
+		sentMessage->type = 7;
+		return;
+	}
+	else {
 		fputs("error: command not found\n", stdout);
 		return;
 	}
@@ -75,7 +79,6 @@ int main(int argc, char *argv[]) {
 
 	char addrstr[BUFSIZE];
 	addrtostr(addr, addrstr, BUFSIZE);
-	printf("connected to %s\n", addrstr);
 	struct action sentMessage;
 	struct action receivedData;
 
@@ -99,17 +102,29 @@ int main(int argc, char *argv[]) {
 		else if (numBytes != sizeof(sentMessage))
 			DieWithUserMessage("send()", "sent unexpected number of bytes");
 
-		char recvMessage[BUFSIZE];
-		memset(recvMessage, 0, BUFSIZE);
 		numBytes = recv(sock, &receivedData, sizeof(struct action), 0);
 		if (numBytes < 0)
 			DieWithSystemMessage("recv() failed");
 		else if (numBytes == 0)
 			DieWithUserMessage("recv()", "connection closed prematurely");
 
-		// recvMessage[numBytes] = '\0';
-		printBoard(receivedData.board);
-		// printf("%d", sentMessage.type);
+
+		//TODO: colocar essa logica em uma funcao
+		if(receivedData.type == 3){
+			printBoard(receivedData.board);
+		}
+		if(receivedData.type == 7){
+			close(sock);
+			exit(0);
+		}
+		if(receivedData.type == 8){
+			printf("GAME OVER!\n");
+			printBoard(receivedData.board);
+		}
+		if(receivedData.type == 6){
+			printf("YOU WIN!\n");
+			printBoard(receivedData.board);
+		}
 	}
 
 	close(sock);

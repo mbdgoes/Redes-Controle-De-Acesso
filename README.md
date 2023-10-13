@@ -7,10 +7,13 @@
   ## Done 🔥  
   - Estabelecimento da conexão cliente/servidor
   - Envio de Mensagens
+  - Leitura do input para criar o board
+  - Lógica inicial do jogo
 
   ## To Do 🚀  
-  - Resolver o problema do server estar fechando quando o cliente fecha a conexão
-  - Adicionar leitura do input para criar o board
-  - Estabelecer lógica do jogo
-  - Adicionar verifações para erros de cliente/server
+  - Adicionar verificações para erros de cliente/server
+  - Passar erros enviados pelo servidor para tratar no cliente
+  - Tratamento de erros de flag e remove_flag
+  - Exit resetar o estado do jogo?
+  - Refatorar o código
 

@@ -29,6 +29,7 @@ int server_sockaddr_init(const char *proto, const char *portstr, struct sockaddr
 int addrparse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage);
 void addrtostr(const struct sockaddr *addr, char *str, size_t strsize);
 
+int* getCoordinates(char* coordChar);
 void initializeBoard(struct gameSetup *gameSetup, const char *filename);
 void computeCommand(struct action *action, struct action *receivedData, struct gameSetup *game);
 void printBoard(int board[4][4]);
