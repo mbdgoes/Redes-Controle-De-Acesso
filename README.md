@@ -16,4 +16,3 @@
   - Tratamento de erros de flag e remove_flag
   - Exit resetar o estado do jogo?
   - Refatorar o código
-
