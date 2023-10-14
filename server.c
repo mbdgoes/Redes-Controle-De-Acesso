@@ -20,21 +20,17 @@ int main(int argc, char *argv[]) {
 	}
 
 	struct sockaddr_storage storage;
-	server_sockaddr_init(argv[1], argv[2], &storage);
-	int s;
-	s = socket(storage.ss_family, SOCK_STREAM, 0);
+	initServerSockaddr(argv[1], argv[2], &storage); //Armazena as configuracoes do server passadas de input em storage
+	int s = socket(storage.ss_family, SOCK_STREAM, 0); //Cria um socket baseado em storage
 
 	int enable = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
 	struct sockaddr *addr = (struct sockaddr *)(&storage);
-	bind(s, addr, sizeof(storage));
+	bind(s, addr, sizeof(storage)); //Bind do socket com o endereco
 	listen(s, 10);
 
-	char addrstr[BUFSIZE];
-	addrtostr(addr, addrstr, BUFSIZE);
-
 	struct gameSetup game;
-	initializeBoard(&game, argv[4]);
+	initializeBoard(&game, argv[4]); //Le do arquivo de input e inicializa o campo inicial do jogo
 	printBoard(game.initialBoard);
 
 	struct action receivedData;
@@ -42,25 +38,23 @@ int main(int argc, char *argv[]) {
 
 	while (1) {
 		struct sockaddr_storage cstorage;
-		struct sockaddr *caddr = (struct sockaddr *)(&cstorage);  // Client address
+		struct sockaddr *caddr = (struct sockaddr *)(&cstorage);  // Endereco do cliente
 		socklen_t caddrlen = sizeof(cstorage);
-		csock = accept(s, caddr, &caddrlen);
-		char caddrstr[BUFSIZE];
-		addrtostr(caddr, caddrstr, BUFSIZE);
+		csock = accept(s, caddr, &caddrlen); //Aceita conexao do cliente
+
 		printf("client connected\n");
 
 		struct action action;
 
 		while (1) {
-
+			//Recebe mensagem (action) do cliente e armazena em receivedData
 			size_t numBytesRcvd = recv(csock, &receivedData, sizeof(struct action), 0);
 
-			if (numBytesRcvd <= 0) {
-				break;
-			}
+			if (numBytesRcvd <= 0) break; //Caso ocorra erro no envio da mensagem
 
-			computeCommand(&action,&receivedData,&game);
-			size_t numBytesSent = send(csock, &action, sizeof(struct action), 0);
+			//Prepara a resposta(action) baseado nos dados recebidos (receivedData)
+			computeCommand(&action,&receivedData,&game); 
+			send(csock, &action, sizeof(struct action), 0); //envia estrutura action para o cliente
 		}
 		close(csock);
 	}

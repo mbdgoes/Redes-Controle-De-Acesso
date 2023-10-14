@@ -1,19 +1,5 @@
 #include "common.h"
 
-#define BUFSIZE 500
-#define BOARD_SIZE 4
-#define TRUE 1
-
-#define START 0
-#define REVEAL 1
-#define FLAG 2
-#define STATE 3
-#define REMOVE_FLAG 4
-#define RESET 5
-#define WIN 6
-#define EXIT 7
-#define GAME_OVER 8
-
 void DieWithUserMessage(const char *msg, const char *detail) {
 	fputs(msg, stderr);
 	fputs(": ", stderr);
@@ -27,59 +13,38 @@ void DieWithSystemMessage(const char *msg) {
 	exit(EXIT_FAILURE);
 }
 
-int server_sockaddr_init(const char *proto, const char *portstr, struct sockaddr_storage *storage) {
+//Inicializa a estrutura do endereco com base no protocolo e na porta especificado
+int initServerSockaddr(const char *proto, const char *portstr, struct sockaddr_storage *storage) {
 	uint16_t port = (uint16_t)atoi(portstr);
 
 	if (port == 0) {
 		return -1;
 	}
-	port = htons(port);
+	port = htons(port); //host bytes para network bytes
 
-	memset(storage, 0, sizeof(*storage));
+	memset(storage, 0, sizeof(*storage)); //zerar estrutura
 
-	if (0 == strcmp(proto, "v4")) {
+	if (0 == strcmp(proto, "v4")) { //configuracao IPv4
 		struct sockaddr_in *addr4 = (struct sockaddr_in *)storage;
 		addr4->sin_family = AF_INET;
 		addr4->sin_addr.s_addr = INADDR_ANY;
 		addr4->sin_port = port;
 		return 0;
-	} else if (0 == strcmp(proto, "v6")) {
+	} 
+	else if (0 == strcmp(proto, "v6")) { //configuracao IPv6
 		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)storage;
 		addr6->sin6_family = AF_INET6;
 		addr6->sin6_addr = in6addr_any;
 		addr6->sin6_port = port;
 		return 0;
 	} else {
-		return -1;
+		return -1; //erro
 	}
 }
 
-void addrtostr(const struct sockaddr *addr, char *str, size_t strsize) {
-	int version;
-	char addrstr[INET6_ADDRSTRLEN + 1] = "";
-	uint16_t port;
-
-	if (addr->sa_family == AF_INET) {
-		version = 4;
-		struct sockaddr_in *addr4 = (struct sockaddr_in *)addr;
-		if (!inet_ntop(AF_INET, &(addr4->sin_addr), addrstr, INET6_ADDRSTRLEN + 1)) {
-			DieWithUserMessage("error", "ntop");
-		}
-		port = ntohs(addr4->sin_port);
-	} else if (addr->sa_family == AF_INET6) {
-		version = 6;
-		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)addr;
-		if (!inet_ntop(AF_INET6, &(addr6->sin6_addr), addrstr, INET6_ADDRSTRLEN + 1)) {
-			DieWithUserMessage("error", "ntop");
-		}
-		port = ntohs(addr6->sin6_port);
-	} else {
-		DieWithUserMessage("protocol error", "unknown protocol family");
-	}
-	snprintf(str, strsize, "IPv%d %s %hu", version, addrstr, port);
-}
-
-int addrparse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage) {
+//Parse do endereco informado pelo cliente -> preenche a estrutura do socket
+//Retorna 0 se bem sucedido, -1 se erro
+int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage) {
 	if (addrstr == NULL || portstr == NULL)
 		return -1;
 
@@ -89,15 +54,17 @@ int addrparse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 
 	port = htons(port);
 
+	//IPv4
 	struct in_addr inaddr4;
 	if (inet_pton(AF_INET, addrstr, &inaddr4)) {
 		struct sockaddr_in *addr4 = (struct sockaddr_in *)storage;
 		addr4->sin_family = AF_INET;
 		addr4->sin_port = port;
 		addr4->sin_addr = inaddr4;
-		return 0;
+		return 0; 
 	}
 
+	//IPv6
 	struct in6_addr inaddr6;
 	if (inet_pton(AF_INET6, addrstr, &inaddr6)) {
 		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)storage;
@@ -106,31 +73,35 @@ int addrparse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 		memcpy(&(addr6->sin6_addr), &inaddr6, sizeof(inaddr6));
 		return 0;
 	}
+	return -1;
 }
 
+//Checa se existe bomba nas coordenadas passadas
 int isBomb(int coordX, int coordY, int board[BOARD_SIZE][BOARD_SIZE]){
 	if(board[coordX][coordY] == -1) return 1;
 	return 0;
 }
 
+//Checa vitoria do cliente
 int checkWin(int coordX, int coordY, int board[BOARD_SIZE][BOARD_SIZE]){
 	int count = 0;
 
 	for(int i = 0; i < BOARD_SIZE; i++){
 		for(int j = 0; j < BOARD_SIZE; j++){
-			if(board[i][j] == -2 || board[i][j] == -3) count++;
+			if(board[i][j] == HIDDEN_CELL || board[i][j] == BOMB_CELL) count++; //conta bombas ou campos escondidos
 		}
 	}
 
-	if(count == 3) return 1;
+	if(count == 3) return TRUE; //se restam apenas 3 bombas
 	return 0;
 }
 
+//Faz o parsing do input do cliente
 void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error) {
 	char *inputs[BUFSIZE];
 	char *token = strtok(command, " ");
 	int count = 0;
-
+	//Tokenizar os comandos
 	while (token != NULL) {
 		inputs[count++] = token;
 		token = strtok(NULL, " ");
@@ -144,29 +115,30 @@ void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error)
 		sentMessage->type = REVEAL;
 		int* coordinates = getCoordinates(inputs[1]);
 
-		if(coordinates[0] < 0 || coordinates[0] > 3 || coordinates[1] < 0 || coordinates[1] > 3){
+		//Se valor passado esta fora dos limites do board
+		if(coordinates[0] < 0 || coordinates[0] > BOARD_SIZE-1 || coordinates[1] < 0 || coordinates[1] > BOARD_SIZE-1){
 			*error = TRUE;
 			printf("%s","error: invalid cell\n");
 			return;
 		}
-		if(sentMessage->board[coordinates[0]][coordinates[1]] >= 0){
+		if(sentMessage->board[coordinates[0]][coordinates[1]] >= 0){ //Se celula ja foi revelada (>=0)
 			*error = TRUE;
 			printf("error: cell already revealed\n");
 			return;
 		}
-		memcpy(sentMessage->coordinates, coordinates,sizeof(sentMessage->coordinates));
+		memcpy(sentMessage->coordinates, coordinates,sizeof(sentMessage->coordinates)); //Copia coordenadas para a estrutura de action
 		return;
 	} 
 	else if (strcmp(inputs[0], "flag") == 0) {
 		sentMessage->type = FLAG;
 		int* coordinates = getCoordinates(inputs[1]);
 
-		if(sentMessage->board[coordinates[0]][coordinates[1]] == -3){
+		if(sentMessage->board[coordinates[0]][coordinates[1]] == FLAG_CELL){ //Se existe flag na posicao
 			*error = 1;
 			printf("error: cell already has a flag\n");
 			return;
 		}
-		if(sentMessage->board[coordinates[0]][coordinates[1]] >= 0){
+		if(sentMessage->board[coordinates[0]][coordinates[1]] >= 0){ //checa se celula ja foi revelada
 			*error = 1;
 			printf("error: cannot insert flag in revealed cell\n");
 			return;
@@ -195,17 +167,13 @@ void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error)
 	return;
 }
 
-// logica para receber mensagem do user e aplicar comandos ao board
+//Logica para receber mensagem do user e aplicar comandos ao board
 void computeCommand(struct action *action, struct action *receivedData, struct gameSetup *game) {
 	int coordX, coordY;
 
 	switch(receivedData->type){
 		case START: 
-			for (int i = 0; i < BOARD_SIZE; i++) {
-				for (int j = 0; j < BOARD_SIZE; j++) {
-					action->board[i][j] = -2;
-				}
-			}
+			fillBoard(action->board, HIDDEN_CELL); //Preenche campo com celula escondida
 			action->type = STATE;
 		break;
 
@@ -213,18 +181,19 @@ void computeCommand(struct action *action, struct action *receivedData, struct g
 			coordX = receivedData->coordinates[0];
 			coordY = receivedData->coordinates[1];
 
-			if(isBomb(coordX,coordY,game->initialBoard)){
+			if(isBomb(coordX,coordY,game->initialBoard)){ //Checa se local tem bomba e emite game over
 				action->type = GAME_OVER;
 				memcpy(action->board, game->initialBoard, sizeof(action->board));
 			}
 			else{
+				//Revela posicao no campo corrente (action->board)
 				action->board[coordX][coordY] = game->initialBoard[coordX][coordY];
 				
-				if(checkWin(coordX,coordY,action->board)){
+				if(checkWin(coordX,coordY,action->board)){ //Checa vitoria
 					action->type = WIN;
 					memcpy(action->board, game->initialBoard, sizeof(action->board));
 				}
-				else action->type = STATE;
+				else action->type = STATE; //Transmite mensagem do tipo STATE
 			}
 		break;
 
@@ -233,7 +202,7 @@ void computeCommand(struct action *action, struct action *receivedData, struct g
 			coordY = receivedData->coordinates[1];
 
 			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE){
-				action->board[coordX][coordY] = -3;
+				action->board[coordX][coordY] = FLAG_CELL;
 			}
 		break;
 
@@ -241,14 +210,16 @@ void computeCommand(struct action *action, struct action *receivedData, struct g
 			coordX = receivedData->coordinates[0];
 			coordY = receivedData->coordinates[1];
 
-			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE && action->board[coordX][coordY] == -3){
-				action->board[coordX][coordY] = -2;
+			//Se tiver flag na posicao atualiza para celula escondida
+			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE && action->board[coordX][coordY] == FLAG_CELL){
+				action->board[coordX][coordY] = HIDDEN_CELL;
 			}
 		break;
 
 		case RESET:
+			//Reinicia o campo
 			action->type = STATE;
-			fillBoard(action->board,-2);
+			fillBoard(action->board, HIDDEN_CELL);
 			printf("starting new game\n");
 		break;
 
@@ -260,6 +231,7 @@ void computeCommand(struct action *action, struct action *receivedData, struct g
 	return;
 }
 
+//Le arquivo e armazena valores na estrutura de gameSetup
 void initializeBoard(struct gameSetup *gameSetup, const char *filename) {
 	FILE *file = fopen(filename, "r");
 	if (file == NULL) perror("error: empty file");
@@ -267,23 +239,24 @@ void initializeBoard(struct gameSetup *gameSetup, const char *filename) {
 	for (int i = 0; i < BOARD_SIZE; i++) {
 		for (int j = 0; j < BOARD_SIZE; j++) {
 			fscanf(file, "%d,", &gameSetup->initialBoard[i][j]);
-			gameSetup->currBoard[i][j] = -2;
 		}
 	}
 }
 
+//Imprime o campo fazendo a conversao dos numeros para os devidos caracteres
 void printBoard(int board[BOARD_SIZE][BOARD_SIZE]){
 	for (int i = 0; i < BOARD_SIZE; i++) {
 		for (int j = 0; j < BOARD_SIZE; j++) {
-			if(board[i][j] == -1) printf("%c\t\t",'*');
-			else if(board[i][j] == -2) printf("%c\t\t",'-');
-			else if(board[i][j] == -3) printf("%c\t\t",'>');
+			if(board[i][j] == -1) printf("%c\t\t",'*'); //Bomba
+			else if(board[i][j] == -2) printf("%c\t\t",'-'); //Celula escondida
+			else if(board[i][j] == -3) printf("%c\t\t",'>'); //Flag
 			else printf("%d\t\t",board[i][j]);
 		}
 		printf("\n");
 	}
 }
 
+//Preenche o board com o valor passado como parametro
 void fillBoard(int board[BOARD_SIZE][BOARD_SIZE], int num){
 	for (int i = 0; i < BOARD_SIZE; i++) {
 		for (int j = 0; j < BOARD_SIZE; j++) {
@@ -292,6 +265,7 @@ void fillBoard(int board[BOARD_SIZE][BOARD_SIZE], int num){
 	}
 }
 
+//Retorna array de inteiros com duas coordenadas a partir da string
 int* getCoordinates(char* coordChar){
 	int* result = (int*)malloc(2*sizeof(int));
 
@@ -302,4 +276,28 @@ int* getCoordinates(char* coordChar){
 		coordinate = strtok(NULL, ",");
 	}
 	return result;
+}
+
+//Confere os dados recebidos e realiza acoes para o cliente
+void handleReceivedData(struct action* receivedData, int sock){
+	switch(receivedData->type){
+		case STATE:
+			printBoard(receivedData->board);
+		break;
+
+		case EXIT:
+			close(sock);
+			exit(0);
+		break;
+
+		case GAME_OVER:
+			printf("GAME OVER!\n");
+			printBoard(receivedData->board);
+		break;
+
+		case WIN:
+			printf("YOU WIN!\n");
+			printBoard(receivedData->board);
+		break;
+	}
 }

@@ -12,6 +12,8 @@
   - Adicionar verificações para erros de cliente/server
   - Passar erros enviados pelo servidor para tratar no cliente
   - Tratamento de erros de flag e remove_flag
+  - Refatorar o código
 
   ## To Do 🚀 
-  - Refatorar o código
+  - Escrever documentação
+  - Testar no PC linux por SSH
