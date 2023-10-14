@@ -12,6 +12,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#define BUFSIZE 500
+
 struct action {
 	int type;
 	int coordinates[2];
@@ -31,6 +33,7 @@ void addrtostr(const struct sockaddr *addr, char *str, size_t strsize);
 
 int* getCoordinates(char* coordChar);
 void initializeBoard(struct gameSetup *gameSetup, const char *filename);
+void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error);
 void computeCommand(struct action *action, struct action *receivedData, struct gameSetup *game);
 void printBoard(int board[4][4]);
 void fillBoard(int board[4][4], int num);

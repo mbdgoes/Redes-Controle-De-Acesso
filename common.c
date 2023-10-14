@@ -2,8 +2,8 @@
 
 #define BUFSIZE 500
 #define BOARD_SIZE 4
+#define TRUE 1
 
-#define ERROR -1
 #define START 0
 #define REVEAL 1
 #define FLAG 2
@@ -126,6 +126,74 @@ int checkWin(int coordX, int coordY, int board[BOARD_SIZE][BOARD_SIZE]){
 	return 0;
 }
 
+void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error) {
+	char *inputs[BUFSIZE];
+	char *token = strtok(command, " ");
+	int count = 0;
+
+	while (token != NULL) {
+		inputs[count++] = token;
+		token = strtok(NULL, " ");
+	}
+
+	if (strcmp(inputs[0], "start") == 0) {
+		sentMessage->type = START;
+		return;
+	}
+	else if (strcmp(inputs[0], "reveal") == 0) {
+		sentMessage->type = REVEAL;
+		int* coordinates = getCoordinates(inputs[1]);
+
+		if(coordinates[0] < 0 || coordinates[0] > 3 || coordinates[1] < 0 || coordinates[1] > 3){
+			*error = TRUE;
+			printf("%s","error: invalid cell\n");
+			return;
+		}
+		if(sentMessage->board[coordinates[0]][coordinates[1]] >= 0){
+			*error = TRUE;
+			printf("error: cell already revealed\n");
+			return;
+		}
+		memcpy(sentMessage->coordinates, coordinates,sizeof(sentMessage->coordinates));
+		return;
+	} 
+	else if (strcmp(inputs[0], "flag") == 0) {
+		sentMessage->type = FLAG;
+		int* coordinates = getCoordinates(inputs[1]);
+
+		if(sentMessage->board[coordinates[0]][coordinates[1]] == -3){
+			*error = 1;
+			printf("error: cell already has a flag\n");
+			return;
+		}
+		if(sentMessage->board[coordinates[0]][coordinates[1]] >= 0){
+			*error = 1;
+			printf("error: cannot insert flag in revealed cell\n");
+			return;
+		}
+		memcpy(sentMessage->coordinates, coordinates,sizeof(sentMessage->coordinates));
+		return;
+	}
+	else if (strcmp(inputs[0], "remove_flag") == 0) {
+		sentMessage->type = REMOVE_FLAG;
+		int* coordinates = getCoordinates(inputs[1]);
+		memcpy(sentMessage->coordinates, coordinates,sizeof(sentMessage->coordinates));
+		return;
+	} 
+	else if (strcmp(inputs[0], "reset") == 0) {
+		sentMessage->type = RESET;
+		return;
+	} 
+	else if (strcmp(inputs[0], "exit") == 0) {
+		sentMessage->type = EXIT;
+		return;
+	}
+	else {
+		fputs("error: command not found\n", stdout);
+		return;
+	}
+	return;
+}
 
 // logica para receber mensagem do user e aplicar comandos ao board
 void computeCommand(struct action *action, struct action *receivedData, struct gameSetup *game) {
@@ -145,22 +213,18 @@ void computeCommand(struct action *action, struct action *receivedData, struct g
 			coordX = receivedData->coordinates[0];
 			coordY = receivedData->coordinates[1];
 
-			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE){ //talvez tratar apenas no cliente
-				if(isBomb(coordX,coordY,game->initialBoard)){
-					action->type = GAME_OVER;
+			if(isBomb(coordX,coordY,game->initialBoard)){
+				action->type = GAME_OVER;
+				memcpy(action->board, game->initialBoard, sizeof(action->board));
+			}
+			else{
+				action->board[coordX][coordY] = game->initialBoard[coordX][coordY];
+				
+				if(checkWin(coordX,coordY,action->board)){
+					action->type = WIN;
 					memcpy(action->board, game->initialBoard, sizeof(action->board));
 				}
-				else{
-					action->board[coordX][coordY] = game->initialBoard[coordX][coordY];
-					
-					if(checkWin(coordX,coordY,action->board)){
-						action->type = WIN;
-						memcpy(action->board, game->initialBoard, sizeof(action->board));
-					}
-					else action->type = STATE;
-				}
-			}else{
-				action->type = ERROR; //talvez remover esse erro? Tratar o erro no cliente (print error)
+				else action->type = STATE;
 			}
 		break;
 
@@ -177,7 +241,7 @@ void computeCommand(struct action *action, struct action *receivedData, struct g
 			coordX = receivedData->coordinates[0];
 			coordY = receivedData->coordinates[1];
 
-			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE){
+			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE && action->board[coordX][coordY] == -3){
 				action->board[coordX][coordY] = -2;
 			}
 		break;

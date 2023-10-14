@@ -9,10 +9,9 @@
   - Envio de Mensagens
   - Leitura do input para criar o board
   - Lógica inicial do jogo
-
-  ## To Do 🚀  
   - Adicionar verificações para erros de cliente/server
   - Passar erros enviados pelo servidor para tratar no cliente
   - Tratamento de erros de flag e remove_flag
-  - Exit resetar o estado do jogo?
+
+  ## To Do 🚀 
   - Refatorar o código
