@@ -88,7 +88,7 @@ int checkWin(int coordX, int coordY, int board[BOARD_SIZE][BOARD_SIZE]){
 
 	for(int i = 0; i < BOARD_SIZE; i++){
 		for(int j = 0; j < BOARD_SIZE; j++){
-			if(board[i][j] == HIDDEN_CELL || board[i][j] == BOMB_CELL) count++; //conta bombas ou campos escondidos
+			if(board[i][j] == HIDDEN_CELL || board[i][j] == FLAG_CELL) count++; //deve ter 3 espacos escondidos ou com flags
 		}
 	}
 
@@ -138,7 +138,7 @@ void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error)
 			printf("error: cell already has a flag\n");
 			return;
 		}
-		if(sentMessage->board[coordinates[0]][coordinates[1]] >= 0){ //checa se celula ja foi revelada
+		if(sentMessage->board[coordinates[0]][coordinates[1]] >= 0){ //Se s celula ja foi revelada
 			*error = 1;
 			printf("error: cannot insert flag in revealed cell\n");
 			return;
@@ -186,7 +186,7 @@ void computeCommand(struct action *action, struct action *receivedData, struct g
 				memcpy(action->board, game->initialBoard, sizeof(action->board));
 			}
 			else{
-				//Revela posicao no campo corrente (action->board)
+				//Revela posicao no campo atual (action->board)
 				action->board[coordX][coordY] = game->initialBoard[coordX][coordY];
 				
 				if(checkWin(coordX,coordY,action->board)){ //Checa vitoria
@@ -201,23 +201,23 @@ void computeCommand(struct action *action, struct action *receivedData, struct g
 			coordX = receivedData->coordinates[0];
 			coordY = receivedData->coordinates[1];
 
-			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE){
+			if(coordX >= 0 && coordX < BOARD_SIZE && coordY >= 0 && coordY < BOARD_SIZE){
 				action->board[coordX][coordY] = FLAG_CELL;
+				action->type = STATE;
 			}
 		break;
 
 		case REMOVE_FLAG: ;
 			coordX = receivedData->coordinates[0];
 			coordY = receivedData->coordinates[1];
-
 			//Se tiver flag na posicao atualiza para celula escondida
-			if(coordX < BOARD_SIZE && coordY < BOARD_SIZE && action->board[coordX][coordY] == FLAG_CELL){
+			if(coordX >= 0 && coordX < BOARD_SIZE && coordY >= 0 && coordY < BOARD_SIZE && action->board[coordX][coordY] == FLAG_CELL){
 				action->board[coordX][coordY] = HIDDEN_CELL;
+				action->type = STATE;
 			}
 		break;
 
 		case RESET:
-			//Reinicia o campo
 			action->type = STATE;
 			fillBoard(action->board, HIDDEN_CELL);
 			printf("starting new game\n");

@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
 			//Recebe mensagem (action) do cliente e armazena em receivedData
 			size_t numBytesRcvd = recv(csock, &receivedData, sizeof(struct action), 0);
 
-			if (numBytesRcvd <= 0) break; //Caso ocorra erro no envio da mensagem
+			if (numBytesRcvd <= 0) break;
 
 			//Prepara a resposta(action) baseado nos dados recebidos (receivedData)
 			computeCommand(&action,&receivedData,&game); 

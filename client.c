@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
 			//Recebe mensagem e salva em receivedData
 			recv(sock, &receivedData, sizeof(struct action), 0);
 			
-			//Atualiza campo corrente com campo recebido do servidor
+			//Atualiza o campo atual com campo recebido do servidor
 			memcpy(sentMessage.board, receivedData.board,sizeof(sentMessage.board));
 
 			//Confere os dados recebidos e decide se imprime o campo ou fecha conexao
