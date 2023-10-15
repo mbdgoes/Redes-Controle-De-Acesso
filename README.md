@@ -13,7 +13,5 @@
   - Passar erros enviados pelo servidor para tratar no cliente
   - Tratamento de erros de flag e remove_flag
   - Refatorar o código
-
-  ## To Do 🚀 
   - Escrever documentação
-  - Testar no PC linux por SSH
+  - Testar no PC linux
