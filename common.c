@@ -8,11 +8,6 @@ void DieWithUserMessage(const char *msg, const char *detail) {
 	exit(EXIT_FAILURE);
 }
 
-void DieWithSystemMessage(const char *msg) {
-	perror(msg);
-	exit(EXIT_FAILURE);
-}
-
 //Inicializa a estrutura do endereco com base no protocolo e na porta especificado
 int initServerSockaddr(const char *proto, const char *portstr, struct sockaddr_storage *storage) {
 	uint16_t port = (uint16_t)atoi(portstr);

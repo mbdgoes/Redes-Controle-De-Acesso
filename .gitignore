@@ -1,6 +1,6 @@
 *.o
 /client
 /server
-/bin
+/bin/*
 /.vscode
 /input

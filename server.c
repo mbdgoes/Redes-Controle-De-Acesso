@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
 
 	struct sockaddr_storage storage;
 	initServerSockaddr(argv[1], argv[2], &storage); //Armazena as configuracoes do server passadas de input em storage
-	int s = socket(storage.ss_family, SOCK_STREAM, 0); //Cria um socket baseado em storage
+	int s = socket(storage.ss_family, SOCK_STREAM, 0); //Cria um socket baseado em 'storage'
 
 	int enable = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));

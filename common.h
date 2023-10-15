@@ -46,7 +46,6 @@ struct gameSetup {
 
 //============ FUNCOES DE REDE =====================
 void DieWithUserMessage(const char *msg, const char *detail);
-void DieWithSystemMessage(const char *msg);
 int initServerSockaddr(const char *proto, const char *portstr, struct sockaddr_storage *storage);
 int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage);
 
