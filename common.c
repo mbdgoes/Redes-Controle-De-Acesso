@@ -9,8 +9,8 @@ void DieWithUserMessage(const char *msg, const char *detail) {
 }
 
 //Inicializa a estrutura do endereco com base no protocolo e na porta especificado
-int initServerSockaddr(const char *proto, const char *portstr, struct sockaddr_storage *storage) {
-	uint16_t port = (uint16_t)atoi(portstr);
+int initServerSockaddr(const char *serverPortStr, const char *clientPortStr, struct sockaddr_storage *storage) {
+	uint16_t port = (uint16_t)atoi(serverPortStr);
 
 	if (port == 0) {
 		return -1;
@@ -19,22 +19,11 @@ int initServerSockaddr(const char *proto, const char *portstr, struct sockaddr_s
 
 	memset(storage, 0, sizeof(*storage)); //zerar estrutura
 
-	if (0 == strcmp(proto, "v4")) { //configuracao IPv4
-		struct sockaddr_in *addr4 = (struct sockaddr_in *)storage;
-		addr4->sin_family = AF_INET;
-		addr4->sin_addr.s_addr = INADDR_ANY;
-		addr4->sin_port = port;
-		return 0;
-	} 
-	else if (0 == strcmp(proto, "v6")) { //configuracao IPv6
-		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)storage;
-		addr6->sin6_family = AF_INET6;
-		addr6->sin6_addr = in6addr_any;
-		addr6->sin6_port = port;
-		return 0;
-	} else {
-		return -1; //erro
-	}
+	struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)storage;
+	addr6->sin6_family = AF_INET6;
+	addr6->sin6_addr = in6addr_any;
+	addr6->sin6_port = port;
+	return 0;
 }
 
 //Parse do endereco informado pelo cliente -> preenche a estrutura do socket
@@ -163,7 +152,7 @@ void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error)
 }
 
 //Logica para receber mensagem do user e aplicar comandos ao board
-void computeCommand(struct action *action, struct action *receivedData, struct gameSetup *game) {
+void computeCommand(struct action *action, struct action *receivedData) {
 	int coordX, coordY;
 
 	switch(receivedData->type){
@@ -173,23 +162,7 @@ void computeCommand(struct action *action, struct action *receivedData, struct g
 		break;
 
 		case REVEAL: ;
-			coordX = receivedData->coordinates[0];
-			coordY = receivedData->coordinates[1];
-
-			if(isBomb(coordX,coordY,game->initialBoard)){ //Checa se local tem bomba e emite game over
-				action->type = GAME_OVER;
-				memcpy(action->board, game->initialBoard, sizeof(action->board));
-			}
-			else{
-				//Revela posicao no campo atual (action->board)
-				action->board[coordX][coordY] = game->initialBoard[coordX][coordY];
-				
-				if(checkWin(coordX,coordY,action->board)){ //Checa vitoria
-					action->type = WIN;
-					memcpy(action->board, game->initialBoard, sizeof(action->board));
-				}
-				else action->type = STATE; //Transmite mensagem do tipo STATE
-			}
+			
 		break;
 
 		case FLAG: ;

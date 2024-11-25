@@ -1,17 +1,16 @@
 
   # Trabalho Prático 1 📝  
-  Trabalho Prático 1 da disciplina de Redes de Computadores 2023/2. 
+  Trabalho Prático 1 da disciplina de Redes de Computadores 2024/2. 
 
   Documentação do trabalho está contida no PDF na raíz do projeto   
   
-  ## Done 🔥  
-  - Estabelecimento da conexão cliente/servidor
-  - Envio de Mensagens
-  - Leitura do input para criar o board
-  - Lógica inicial do jogo
-  - Adicionar verificações para erros de cliente/server
-  - Passar erros enviados pelo servidor para tratar no cliente
-  - Tratamento de erros de flag e remove_flag
-  - Refatorar o código
-  - Escrever documentação
-  - Testar no PC linux
+  ## To Do (Primeira parte)🚀
+  - Permitir tanto ipv4 quanto ipv6 (conferir flag IPV6_V6ONLY) -> mudanças na função initServerSockaddr
+  - Pemitir o envio dos argumentos
+  - Colocar o cadastro de pessoa -> Trocar função computeInput
+  - Colocar dois servers em conexão P2P
+  - Consulta de localização pelo server 
+
+
+  ## Done 🔥
+  - 

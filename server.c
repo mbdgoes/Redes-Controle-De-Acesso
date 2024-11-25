@@ -10,12 +10,8 @@
 #define BUFSIZE 500
 
 int main(int argc, char *argv[]) {
-	if (argc < 4) {
-	    fputs("Parameters : <Protocol> <Port> -i <inputFile.txt>\n", stderr);
-	    exit(EXIT_FAILURE);
-	}
-	if(strcmp(argv[3], "-i") != 0){
-	    fputs("Parameters : <Protocol> <Port> -i <inputFile.txt>\n", stderr);
+	if (argc < 3) {
+	    fputs("Parameters : <Server port> <Client port>\n", stderr);
 	    exit(EXIT_FAILURE);
 	}
 
@@ -28,10 +24,6 @@ int main(int argc, char *argv[]) {
 	struct sockaddr *addr = (struct sockaddr *)(&storage);
 	bind(s, addr, sizeof(storage)); //Bind do socket com o endereco
 	listen(s, 10);
-
-	struct gameSetup game;
-	initializeBoard(&game, argv[4]); //Le do arquivo de input e inicializa o campo inicial do jogo
-	printBoard(game.initialBoard);
 
 	struct action receivedData;
 	int csock;
@@ -53,7 +45,7 @@ int main(int argc, char *argv[]) {
 			if (numBytesRcvd <= 0) break;
 
 			//Prepara a resposta(action) baseado nos dados recebidos (receivedData)
-			computeCommand(&action,&receivedData,&game); 
+			computeCommand(&action,&receivedData); 
 			send(csock, &action, sizeof(struct action), 0); //envia estrutura action para o cliente
 		}
 		close(csock);

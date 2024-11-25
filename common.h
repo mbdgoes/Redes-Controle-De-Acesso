@@ -53,7 +53,7 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 int* getCoordinates(char* coordChar);
 void initializeBoard(struct gameSetup *gameSetup, const char *filename);
 void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error);
-void computeCommand(struct action *action, struct action *receivedData, struct gameSetup *game);
+void computeCommand(struct action *action, struct action *receivedData);
 void printBoard(int board[BOARD_SIZE][BOARD_SIZE]);
 void fillBoard(int board[BOARD_SIZE][BOARD_SIZE], int num);
 void handleReceivedData(struct action* receivedData, int sock);
