@@ -21,8 +21,8 @@ int main(int argc, char *argv[]) {
 
 	connect(sock, addr, sizeof(storage)); //Conecta com o server
 
-	struct action sentMessage;
-	struct action receivedData;
+	struct Message sentMessage;
+	struct Message receivedData;
 	while (1) {
 		//Le a linha enviada no stdin e salva em command
 		char command[BUFSIZE];
@@ -35,13 +35,13 @@ int main(int argc, char *argv[]) {
 		
 		//Se nao ha erro de input envia para o servidor
 		if(!error){
-			send(sock, &sentMessage, sizeof(struct action), 0);
+			send(sock, &sentMessage, sizeof(struct Message), 0);
 			
 			//Recebe mensagem e salva em receivedData
-			recv(sock, &receivedData, sizeof(struct action), 0);
+			recv(sock, &receivedData, sizeof(struct Message), 0);
 			
 			//Atualiza o campo atual com campo recebido do servidor
-			memcpy(sentMessage.board, receivedData.board,sizeof(sentMessage.board));
+			// memcpy(sentMessage.board, receivedData.board,sizeof(sentMessage.board));
 
 			//Confere os dados recebidos e decide se imprime o campo ou fecha conexao
 			handleReceivedData(&receivedData, sock);

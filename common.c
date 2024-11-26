@@ -81,7 +81,7 @@ int checkWin(int coordX, int coordY, int board[BOARD_SIZE][BOARD_SIZE]){
 }
 
 //Faz o parsing do input do cliente
-void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error) {
+void computeInput(struct Message *sentMessage, char command[BUFSIZE], int* error) {
 	char *inputs[BUFSIZE];
 	char *token = strtok(command, " ");
 	int count = 0;
@@ -97,43 +97,14 @@ void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error)
 	}
 	else if (strcmp(inputs[0], "reveal") == 0) {
 		sentMessage->type = REVEAL;
-		int* coordinates = getCoordinates(inputs[1]);
-
-		//Se valor passado esta fora dos limites do board
-		if(coordinates[0] < 0 || coordinates[0] > BOARD_SIZE-1 || coordinates[1] < 0 || coordinates[1] > BOARD_SIZE-1){
-			*error = TRUE;
-			printf("%s","error: invalid cell\n");
-			return;
-		}
-		if(sentMessage->board[coordinates[0]][coordinates[1]] >= 0){ //Se celula ja foi revelada (>=0)
-			*error = TRUE;
-			printf("error: cell already revealed\n");
-			return;
-		}
-		memcpy(sentMessage->coordinates, coordinates,sizeof(sentMessage->coordinates)); //Copia coordenadas para a estrutura de action
 		return;
 	} 
 	else if (strcmp(inputs[0], "flag") == 0) {
 		sentMessage->type = FLAG;
-		int* coordinates = getCoordinates(inputs[1]);
-
-		if(sentMessage->board[coordinates[0]][coordinates[1]] == FLAG_CELL){ //Se existe flag na posicao
-			*error = 1;
-			printf("error: cell already has a flag\n");
-			return;
-		}
-		if(sentMessage->board[coordinates[0]][coordinates[1]] >= 0){ //Se s celula ja foi revelada
-			*error = 1;
-			printf("error: cannot insert flag in revealed cell\n");
-			return;
-		}
-		memcpy(sentMessage->coordinates, coordinates,sizeof(sentMessage->coordinates));
 		return;
 	}
 	else if (strcmp(inputs[0], "remove_flag") == 0) {
 		sentMessage->type = REMOVE_FLAG;
-		int* coordinates = getCoordinates(inputs[1]);
-		memcpy(sentMessage->coordinates, coordinates,sizeof(sentMessage->coordinates));
 		return;
 	} 
 	else if (strcmp(inputs[0], "reset") == 0) {
@@ -152,43 +123,27 @@ void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error)
 }
 
 //Logica para receber mensagem do user e aplicar comandos ao board
-void computeCommand(struct action *action, struct action *receivedData) {
+void computeCommand(struct Message *action, struct Message *receivedData) {
 	int coordX, coordY;
 
 	switch(receivedData->type){
 		case START: 
-			fillBoard(action->board, HIDDEN_CELL); //Preenche campo com celula escondida
 			action->type = STATE;
 		break;
 
 		case REVEAL: ;
-			
+		//Fill
 		break;
 
 		case FLAG: ;
-			coordX = receivedData->coordinates[0];
-			coordY = receivedData->coordinates[1];
-
-			if(coordX >= 0 && coordX < BOARD_SIZE && coordY >= 0 && coordY < BOARD_SIZE){
-				action->board[coordX][coordY] = FLAG_CELL;
-				action->type = STATE;
-			}
 		break;
 
 		case REMOVE_FLAG: ;
-			coordX = receivedData->coordinates[0];
-			coordY = receivedData->coordinates[1];
-			//Se tiver flag na posicao atualiza para celula escondida
-			if(coordX >= 0 && coordX < BOARD_SIZE && coordY >= 0 && coordY < BOARD_SIZE && action->board[coordX][coordY] == FLAG_CELL){
-				action->board[coordX][coordY] = HIDDEN_CELL;
-				action->type = STATE;
-			}
+
 		break;
 
 		case RESET:
 			action->type = STATE;
-			fillBoard(action->board, HIDDEN_CELL);
-			printf("starting new game\n");
 		break;
 
 		case EXIT:
@@ -247,10 +202,10 @@ int* getCoordinates(char* coordChar){
 }
 
 //Confere os dados recebidos e realiza acoes para o cliente
-void handleReceivedData(struct action* receivedData, int sock){
+void handleReceivedData(struct Message* receivedData, int sock){
 	switch(receivedData->type){
 		case STATE:
-			printBoard(receivedData->board);
+
 		break;
 
 		case EXIT:
@@ -260,12 +215,10 @@ void handleReceivedData(struct action* receivedData, int sock){
 
 		case GAME_OVER:
 			printf("GAME OVER!\n");
-			printBoard(receivedData->board);
 		break;
 
 		case WIN:
 			printf("YOU WIN!\n");
-			printBoard(receivedData->board);
 		break;
 	}
 }

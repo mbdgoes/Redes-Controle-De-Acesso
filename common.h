@@ -33,16 +33,20 @@
 #define GAME_OVER 8
 
 //Estrutura da mensagem
-struct action {
+typedef struct Message{
 	int type;
-	int coordinates[2];
-	int board[BOARD_SIZE][BOARD_SIZE];
-};
+	char **payload;
+	size_t size;
+} Message;
 
 //Estrutura que armazena o campo inicial completo
 struct gameSetup {
 	int initialBoard[BOARD_SIZE][BOARD_SIZE];
 };
+
+//============ FUNCOES DE MENSAGEM =====================
+Message *createMessage(int code, size_t payloadSize, const char *payloadStrings[]);
+void freeMessage(Message *msg);
 
 //============ FUNCOES DE REDE =====================
 void DieWithUserMessage(const char *msg, const char *detail);
@@ -52,11 +56,11 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 //============= FUNCOES DO JOGO ====================
 int* getCoordinates(char* coordChar);
 void initializeBoard(struct gameSetup *gameSetup, const char *filename);
-void computeInput(struct action *sentMessage, char command[BUFSIZE], int* error);
-void computeCommand(struct action *action, struct action *receivedData);
+void computeInput(struct Message *sentMessage, char command[BUFSIZE], int* error);
+void computeCommand(struct Message *action, struct Message *receivedData);
 void printBoard(int board[BOARD_SIZE][BOARD_SIZE]);
 void fillBoard(int board[BOARD_SIZE][BOARD_SIZE], int num);
-void handleReceivedData(struct action* receivedData, int sock);
+void handleReceivedData(struct Message* receivedData, int sock);
 
 
 #endif

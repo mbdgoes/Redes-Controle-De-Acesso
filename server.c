@@ -20,12 +20,14 @@ int main(int argc, char *argv[]) {
 	int s = socket(storage.ss_family, SOCK_STREAM, 0); //Cria um socket baseado em 'storage'
 
 	int enable = 1;
+	int enableDualStack = 0; // Conexao ipv4 e ipv6
+	setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack) != 0);
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
 	struct sockaddr *addr = (struct sockaddr *)(&storage);
 	bind(s, addr, sizeof(storage)); //Bind do socket com o endereco
 	listen(s, 10);
 
-	struct action receivedData;
+	struct Message receivedData;
 	int csock;
 
 	while (1) {
@@ -36,17 +38,17 @@ int main(int argc, char *argv[]) {
 
 		printf("client connected\n");
 
-		struct action action;
+		struct Message action;
 
 		while (1) {
 			//Recebe mensagem (action) do cliente e armazena em receivedData
-			size_t numBytesRcvd = recv(csock, &receivedData, sizeof(struct action), 0);
+			size_t numBytesRcvd = recv(csock, &receivedData, sizeof(struct Message), 0);
 
 			if (numBytesRcvd <= 0) break;
 
 			//Prepara a resposta(action) baseado nos dados recebidos (receivedData)
 			computeCommand(&action,&receivedData); 
-			send(csock, &action, sizeof(struct action), 0); //envia estrutura action para o cliente
+			send(csock, &action, sizeof(struct Message), 0); //envia estrutura action para o cliente
 		}
 		close(csock);
 	}
