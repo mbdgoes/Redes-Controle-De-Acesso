@@ -26,6 +26,12 @@ int initServerSockaddr(const char *serverPortStr, const char *clientPortStr, str
 	return 0;
 }
 
+void setMessage(Message *message, int type, char payload[BUFSIZE]){
+	message->type = REQ_USRADD;
+	memcpy(message->payload, payload, sizeof(message->payload));
+	message->size = strlen(payload+1);
+};
+
 //Parse do endereco informado pelo cliente -> preenche a estrutura do socket
 //Retorna 0 se bem sucedido, -1 se erro
 int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage) {
@@ -76,9 +82,7 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
 	if (strcmp(inputs[0], "add") == 0) {
         char payload[BUFSIZE] = {0};
         snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[2]);
-		sentMessage->type = REQ_USRADD;
-		memcpy(sentMessage->payload, payload, sizeof(sentMessage->payload));
-		sentMessage->size = strlen(payload+1);
+		setMessage(sentMessage, REQ_USRADD, payload);
 	}
 	else if (strcmp(inputs[0], "exit") == 0) {
 		sentMessage->type = EXIT;
@@ -89,30 +93,27 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
 	}
 }
 
-//Logica para receber mensagem do user e aplicar comandos ao board
-void computeCommand(Message *action, Message *receivedData) {
-	int coordX, coordY;
-
+// Computar resposta do user
+void computeCommand(Message *message, Message *receivedData) {
 	switch(receivedData->type){
 		case REQ_USRADD: 
             char userId[BUFSIZE] = {0};
+			char responsePayload[BUFSIZE] = {0};
             int isSpecial = 0;
 
             // Extrai os dois valores do payload
             sscanf(receivedData->payload, "%s %d", userId, &isSpecial);
-
             // Construir a resposta: "User added {USER_ID}"
-            snprintf(action->payload, BUFSIZE, "User added %.488s", userId); 
-            action->type = REQ_USRADD;
-            action->size = strlen(action->payload) + 1; // Inclui o '\0'
+            snprintf(responsePayload, BUFSIZE, "User added: %s", userId);
+			setMessage(message, REQ_USRADD, responsePayload);
             break;
 		break;
 
 		case EXIT:
 			printf("client disconnected\n");
 		break;
+		//add default...
 	}
-	// return;
 }
 
 //Confere os dados recebidos e realiza acoes para o cliente

@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS  = 
+CFLAGS  = -Wno-format-truncation
 
 all: client server
 
