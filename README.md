@@ -1,8 +1,6 @@
 
   # Trabalho Prático 1 📝  
-  Trabalho Prático 1 da disciplina de Redes de Computadores 2024/2. 
-
-  Documentação do trabalho está contida no PDF na raíz do projeto   
+  Trabalho Prático 1 da disciplina de Redes de Computadores 2024/2.
   
   ## To Do (Primeira parte)🚀
   - Limpar bagunça -> serialize
