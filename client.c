@@ -22,7 +22,8 @@ int main(int argc, char *argv[]) {
 	connect(sock, addr, sizeof(storage)); //Conecta com o server
 
 	
-	Message receivedData;
+	Message sentMessage;
+	Message receivedMessage;
 	while (1) {
 		//Le a linha enviada no stdin e salva em command
 		char command[BUFSIZE];
@@ -31,36 +32,16 @@ int main(int argc, char *argv[]) {
 
 		int error = 0;
 		//Prepara a mensagem que sera enviada para o servidor (sentMessage)
-		Message *sentMessage = computeInput(command, &error);
-		char *serializedMessage;
-		size_t messageSize = serializeMessage(sentMessage, &serializedMessage);
-		
+		computeInput(&sentMessage, command, &error);
 		//Se nao ha erro de input envia para o servidor
 		if(!error){
 			// send(sock, &sentMessage, sizeof(struct Message), 0);
-			send(sock, &messageSize, sizeof(size_t), 0);
-			send(sock, serializedMessage, messageSize, 0);
-			free(serializedMessage);
+			send(sock, &sentMessage, sizeof(struct Message), 0);
 			
-			// Recebe o tamanho da mensagem
-			size_t responseSize;
-			recv(sock, &responseSize, sizeof(size_t), 0);
-
-			// Aloca o buffer para a resposta e recebe a mensagem
-			char *responseBuffer = (char *)malloc(responseSize);
-			recv(sock, responseBuffer, responseSize, 0);
-
-			// Desserializa a mensagem
-			Message *receivedData = deserializeMessage(responseBuffer, responseSize);
-
-			// Libera o buffer da resposta
-			free(responseBuffer);
+			recv(sock, &receivedMessage, sizeof(struct Message), 0);
 
 			// Manipula os dados recebidos
-			handleReceivedData(receivedData, sock);
-
-			// Libera a mensagem recebida
-			freeMessage(receivedData);
+			handleReceivedData(&receivedMessage, sock);
 		}
 	}
 

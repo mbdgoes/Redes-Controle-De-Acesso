@@ -27,7 +27,7 @@ int main(int argc, char *argv[]) {
 	bind(s, addr, sizeof(storage)); //Bind do socket com o endereco
 	listen(s, 10);
 
-	struct Message receivedData;
+	Message receivedMessage, action;
 	int csock;
 
 	while (1) {
@@ -39,40 +39,15 @@ int main(int argc, char *argv[]) {
 		printf("client connected\n");
 
 		while (1) {
-			size_t messageSize;
-			recv(csock, &messageSize, sizeof(size_t), 0);
 
-			// Aloca o buffer para a mensagem e recebe os dados
-			char *messageBuffer = (char *)malloc(messageSize);
-			recv(csock, messageBuffer, messageSize, 0);
-
-			// Desserializa a mensagem
-			Message *receivedData = deserializeMessage(messageBuffer, messageSize);
-
-			// Libera o buffer da mensagem
-			free(messageBuffer);
+			size_t numBytesRcvd = recv(csock, &receivedMessage, sizeof(struct Message), 0);
+			if (numBytesRcvd <= 0) break;
 
 			// Manipula a mensagem recebida
-			Message *action = computeCommand(receivedData);
-
-			// Libera a mensagem recebida
-			freeMessage(receivedData);
-
-			// if (numBytesRcvd <= 0) break;
-			// printf("%d", receivedData.type);
-
-			//Prepara a resposta(action) baseado nos dados recebidos (receivedData)
-			// computeCommand(&action,&receivedData); 
-			// send(csock, &action, sizeof(struct Message), 0); //envia estrutura action para o cliente
-			char *responseBuffer;
-			size_t responseSize = serializeMessage(action, &responseBuffer);
+			computeCommand(&action, &receivedMessage);
 
 			// Envia o tamanho da resposta e depois a resposta
-			send(csock, &responseSize, sizeof(size_t), 0);
-			send(csock, responseBuffer, responseSize, 0);
-
-			// Libera o buffer serializado
-			free(responseBuffer);
+			send(csock, &action, sizeof(struct Message), 0);
 		}
 		close(csock);
 	}

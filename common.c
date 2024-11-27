@@ -8,119 +8,6 @@ void DieWithUserMessage(const char *msg, const char *detail) {
 	exit(EXIT_FAILURE);
 }
 
-Message *createMessage(int type, size_t payloadSize, const char *payloadStrings[]) {
-    // Allocate memory for the Message structure
-    Message *msg = (Message *)malloc(sizeof(Message));
-    if (!msg) {
-        perror("Error allocating memory for Message");
-        exit(EXIT_FAILURE);
-    }
-
-    // Initialize the Message fields
-    msg->type = type;
-    msg->size = payloadSize;
-
-    // Handle cases with no payload
-    if (payloadSize == 0 || payloadStrings == NULL) {
-        msg->payload = NULL;
-    } else {
-        // Allocate memory for the payload array
-        msg->payload = (char **)malloc(payloadSize * sizeof(char *));
-        if (!msg->payload) {
-            perror("Error allocating memory for payload");
-            free(msg);
-            exit(EXIT_FAILURE);
-        }
-
-        // Copy each string in the payload
-        for (size_t i = 0; i < payloadSize; i++) {
-            msg->payload[i] = strdup(payloadStrings[i]);
-            if (!msg->payload[i]) {
-                perror("Error allocating memory for payload string");
-                // Free previously allocated strings
-                for (size_t j = 0; j < i; j++) {
-                    free(msg->payload[j]);
-                }
-                free(msg->payload);
-                free(msg);
-                exit(EXIT_FAILURE);
-            }
-        }
-    }
-
-    return msg;
-}
-
-size_t serializeMessage(const Message *msg, char **buffer) {
-    size_t totalSize = sizeof(int) + sizeof(size_t); // Tamanho do type e size
-    for (size_t i = 0; i < msg->size; i++) {
-        totalSize += strlen(msg->payload[i]) + 1; // +1 para o caractere nulo
-    }
-
-    *buffer = (char *)malloc(totalSize);
-    if (!*buffer) {
-        perror("Erro ao alocar memória para serialização");
-        exit(EXIT_FAILURE);
-    }
-
-    // Escreve type e size no buffer
-    size_t offset = 0;
-    memcpy(*buffer + offset, &msg->type, sizeof(int));
-    offset += sizeof(int);
-    memcpy(*buffer + offset, &msg->size, sizeof(size_t));
-    offset += sizeof(size_t);
-
-    // Escreve as strings do payload
-    for (size_t i = 0; i < msg->size; i++) {
-        size_t len = strlen(msg->payload[i]) + 1;
-        memcpy(*buffer + offset, msg->payload[i], len);
-        offset += len;
-    }
-
-    return totalSize;
-}
-
-// Desserializa um buffer para uma estrutura Message
-Message *deserializeMessage(const char *buffer, size_t bufferSize) {
-    Message *msg = (Message *)malloc(sizeof(Message));
-    if (!msg) {
-        perror("Erro ao alocar memória para desserialização");
-        exit(EXIT_FAILURE);
-    }
-
-    size_t offset = 0;
-
-    // Lê type e size
-    memcpy(&msg->type, buffer + offset, sizeof(int));
-    offset += sizeof(int);
-    memcpy(&msg->size, buffer + offset, sizeof(size_t));
-    offset += sizeof(size_t);
-
-    // Lê o payload
-    if (msg->size > 0) {
-        msg->payload = (char **)malloc(msg->size * sizeof(char *));
-        for (size_t i = 0; i < msg->size; i++) {
-            size_t len = strlen(buffer + offset) + 1;
-            msg->payload[i] = strdup(buffer + offset);
-            offset += len;
-        }
-    } else {
-        msg->payload = NULL;
-    }
-
-    return msg;
-}
-
-void freeMessage(Message *msg) {
-    if (msg) {
-        for (size_t i = 0; i < msg->size; i++) {
-            free(msg->payload[i]);
-        }
-        free(msg->payload);
-        free(msg);
-    }
-}
-
 //Inicializa a estrutura do endereco com base no protocolo e na porta especificado
 int initServerSockaddr(const char *serverPortStr, const char *clientPortStr, struct sockaddr_storage *storage) {
 	uint16_t port = (uint16_t)atoi(serverPortStr);
@@ -175,10 +62,11 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 
 //Faz o parsing do input do cliente
 //TODO: Trocar para switch-case?
-Message* computeInput(char command[BUFSIZE], int* error) {
+void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
 	char *inputs[BUFSIZE];
 	char *token = strtok(command, " ");
 	int count = 0;
+
 	//Tokenizar os comandos
 	while (token != NULL) {
 		inputs[count++] = token;
@@ -186,26 +74,38 @@ Message* computeInput(char command[BUFSIZE], int* error) {
 	}
 
 	if (strcmp(inputs[0], "add") == 0) {
-		return createMessage(REQ_USRADD, 2, (const char **)&inputs[1]);
+        char payload[BUFSIZE] = {0};
+        snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[2]);
+		sentMessage->type = REQ_USRADD;
+		memcpy(sentMessage->payload, payload, sizeof(sentMessage->payload));
+		sentMessage->size = strlen(payload+1);
 	}
 	else if (strcmp(inputs[0], "exit") == 0) {
-		return createMessage(EXIT, 0, NULL);
-	}
+		sentMessage->type = EXIT;
+		sentMessage->size = 0;
+		}
 	else {
 		fputs("error: command not found\n", stdout);
 	}
 }
 
 //Logica para receber mensagem do user e aplicar comandos ao board
-Message* computeCommand(struct Message *receivedData) {
+void computeCommand(Message *action, Message *receivedData) {
 	int coordX, coordY;
 
 	switch(receivedData->type){
 		case REQ_USRADD: 
-			printf("Message received\n");
-			char **payload = (char **)malloc(sizeof(char *));
-			payload[0] = strdup("Message received");
-			return createMessage(REQ_USRADD, 1, (const char **)payload); 
+            char userId[BUFSIZE] = {0};
+            int isSpecial = 0;
+
+            // Extrai os dois valores do payload
+            sscanf(receivedData->payload, "%s %d", userId, &isSpecial);
+
+            // Construir a resposta: "User added {USER_ID}"
+            snprintf(action->payload, BUFSIZE, "User added %.488s", userId); 
+            action->type = REQ_USRADD;
+            action->size = strlen(action->payload) + 1; // Inclui o '\0'
+            break;
 		break;
 
 		case EXIT:
@@ -219,7 +119,7 @@ Message* computeCommand(struct Message *receivedData) {
 void handleReceivedData(struct Message* receivedData, int sock){
 	switch(receivedData->type){
 		case REQ_USRADD:
-			printf("Done\n");
+			puts(receivedData->payload);
 		break;
 
 		case EXIT:
