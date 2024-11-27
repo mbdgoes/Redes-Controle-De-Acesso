@@ -9,33 +9,103 @@ void DieWithUserMessage(const char *msg, const char *detail) {
 }
 
 Message *createMessage(int type, size_t payloadSize, const char *payloadStrings[]) {
+    // Allocate memory for the Message structure
     Message *msg = (Message *)malloc(sizeof(Message));
     if (!msg) {
-        perror("Erro ao alocar memória para a mensagem");
+        perror("Error allocating memory for Message");
         exit(EXIT_FAILURE);
     }
 
+    // Initialize the Message fields
     msg->type = type;
-
-    msg->payload = (char **)malloc(payloadSize * sizeof(char *));
-    if (!msg->payload) {
-        perror("Erro ao alocar memória para o payload");
-        free(msg);
-        exit(EXIT_FAILURE);
-    }
-    // Copiar as strings para o payload
     msg->size = payloadSize;
-    for (size_t i = 0; i < payloadSize; i++) {
-        msg->payload[i] = strdup(payloadStrings[i]);
-        if (!msg->payload[i]) {
-            perror("Erro ao alocar memória para string");
-            for (size_t j = 0; j < i; j++) {
-                free(msg->payload[j]);
-            }
-            free(msg->payload);
+
+    // Handle cases with no payload
+    if (payloadSize == 0 || payloadStrings == NULL) {
+        msg->payload = NULL;
+    } else {
+        // Allocate memory for the payload array
+        msg->payload = (char **)malloc(payloadSize * sizeof(char *));
+        if (!msg->payload) {
+            perror("Error allocating memory for payload");
             free(msg);
             exit(EXIT_FAILURE);
         }
+
+        // Copy each string in the payload
+        for (size_t i = 0; i < payloadSize; i++) {
+            msg->payload[i] = strdup(payloadStrings[i]);
+            if (!msg->payload[i]) {
+                perror("Error allocating memory for payload string");
+                // Free previously allocated strings
+                for (size_t j = 0; j < i; j++) {
+                    free(msg->payload[j]);
+                }
+                free(msg->payload);
+                free(msg);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
+    return msg;
+}
+
+size_t serializeMessage(const Message *msg, char **buffer) {
+    size_t totalSize = sizeof(int) + sizeof(size_t); // Tamanho do type e size
+    for (size_t i = 0; i < msg->size; i++) {
+        totalSize += strlen(msg->payload[i]) + 1; // +1 para o caractere nulo
+    }
+
+    *buffer = (char *)malloc(totalSize);
+    if (!*buffer) {
+        perror("Erro ao alocar memória para serialização");
+        exit(EXIT_FAILURE);
+    }
+
+    // Escreve type e size no buffer
+    size_t offset = 0;
+    memcpy(*buffer + offset, &msg->type, sizeof(int));
+    offset += sizeof(int);
+    memcpy(*buffer + offset, &msg->size, sizeof(size_t));
+    offset += sizeof(size_t);
+
+    // Escreve as strings do payload
+    for (size_t i = 0; i < msg->size; i++) {
+        size_t len = strlen(msg->payload[i]) + 1;
+        memcpy(*buffer + offset, msg->payload[i], len);
+        offset += len;
+    }
+
+    return totalSize;
+}
+
+// Desserializa um buffer para uma estrutura Message
+Message *deserializeMessage(const char *buffer, size_t bufferSize) {
+    Message *msg = (Message *)malloc(sizeof(Message));
+    if (!msg) {
+        perror("Erro ao alocar memória para desserialização");
+        exit(EXIT_FAILURE);
+    }
+
+    size_t offset = 0;
+
+    // Lê type e size
+    memcpy(&msg->type, buffer + offset, sizeof(int));
+    offset += sizeof(int);
+    memcpy(&msg->size, buffer + offset, sizeof(size_t));
+    offset += sizeof(size_t);
+
+    // Lê o payload
+    if (msg->size > 0) {
+        msg->payload = (char **)malloc(msg->size * sizeof(char *));
+        for (size_t i = 0; i < msg->size; i++) {
+            size_t len = strlen(buffer + offset) + 1;
+            msg->payload[i] = strdup(buffer + offset);
+            offset += len;
+        }
+    } else {
+        msg->payload = NULL;
     }
 
     return msg;
@@ -103,28 +173,8 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 	return -1;
 }
 
-//Checa se existe bomba nas coordenadas passadas
-int isBomb(int coordX, int coordY, int board[BOARD_SIZE][BOARD_SIZE]){
-	if(board[coordX][coordY] == -1) return 1;
-	return 0;
-}
-
-//Checa vitoria do cliente
-int checkWin(int coordX, int coordY, int board[BOARD_SIZE][BOARD_SIZE]){
-	int count = 0;
-
-	for(int i = 0; i < BOARD_SIZE; i++){
-		for(int j = 0; j < BOARD_SIZE; j++){
-			if(board[i][j] == HIDDEN_CELL || board[i][j] == FLAG_CELL) count++; //deve ter 3 espacos escondidos ou com flags
-		}
-	}
-
-	if(count == 3) return TRUE; //se restam apenas 3 bombas
-	return 0;
-}
-
 //Faz o parsing do input do cliente
-void computeInput(struct Message *sentMessage, char command[BUFSIZE], int* error) {
+Message* computeInput(char command[BUFSIZE], int* error) {
 	char *inputs[BUFSIZE];
 	char *token = strtok(command, " ");
 	int count = 0;
@@ -135,47 +185,48 @@ void computeInput(struct Message *sentMessage, char command[BUFSIZE], int* error
 	}
 
 	if (strcmp(inputs[0], "add") == 0) {
-		char* subset = malloc(2*sizeof(char));
-		for(int j=1;j<3;j++) subset[j] = inputs[j];
-		Message *sentMessage = createMessage(REQ_USRADD, 2, subset); 
-		return;
+		// char* subset = malloc(2*sizeof(char));
+		// for(int j=1;j<3;j++) subset[j] = inputs[j];
+		return createMessage(REQ_USRADD, 2, (const char **)&inputs[1]);
 	}
 	else if (strcmp(inputs[0], "reveal") == 0) {
-		sentMessage->type = REVEAL;
-		return;
+		// sentMessage->type = REVEAL;
+		// return;
 	} 
 	else if (strcmp(inputs[0], "flag") == 0) {
-		sentMessage->type = FLAG;
-		return;
+		// sentMessage->type = FLAG;
+		// return;
 	}
 	else if (strcmp(inputs[0], "remove_flag") == 0) {
-		sentMessage->type = REMOVE_FLAG;
-		return;
+		// sentMessage->type = REMOVE_FLAG;
+		// return;
 	} 
 	else if (strcmp(inputs[0], "reset") == 0) {
-		sentMessage->type = RESET;
-		return;
+		// sentMessage->type = RESET;
+		// return;
 	} 
 	else if (strcmp(inputs[0], "exit") == 0) {
-		sentMessage->type = EXIT;
-		return;
+		// sentMessage->type = EXIT;
+		return createMessage(EXIT, 0, NULL);
+		// return;
 	}
 	else {
 		fputs("error: command not found\n", stdout);
-		return;
+		// return;
 	}
-	return;
+	// return;
 }
 
 //Logica para receber mensagem do user e aplicar comandos ao board
-void computeCommand(struct Message *action, struct Message *receivedData) {
+Message* computeCommand(struct Message *receivedData) {
 	int coordX, coordY;
 
 	switch(receivedData->type){
 		case REQ_USRADD: 
+			printf("Message received\n");
 			char **payload = (char **)malloc(sizeof(char *));
 			payload[0] = strdup("Message received");
-			Message *action = createMessage(STATE, 1, payload); 
+			return createMessage(REQ_USRADD, 1, (const char **)payload); 
 		break;
 
 		case REVEAL: ;
@@ -190,62 +241,15 @@ void computeCommand(struct Message *action, struct Message *receivedData) {
 		break;
 
 		case RESET:
-			action->type = STATE;
+			// action->type = STATE;
 		break;
 
 		case EXIT:
 			printf("client disconnected\n");
-			action->type = EXIT;
+			// action->type = EXIT;
 		break;
 	}
-	return;
-}
-
-//Le arquivo e armazena valores na estrutura de gameSetup
-void initializeBoard(struct gameSetup *gameSetup, const char *filename) {
-	FILE *file = fopen(filename, "r");
-	if (file == NULL) perror("error: empty file");
-
-	for (int i = 0; i < BOARD_SIZE; i++) {
-		for (int j = 0; j < BOARD_SIZE; j++) {
-			fscanf(file, "%d,", &gameSetup->initialBoard[i][j]);
-		}
-	}
-}
-
-//Imprime o campo fazendo a conversao dos numeros para os devidos caracteres
-void printBoard(int board[BOARD_SIZE][BOARD_SIZE]){
-	for (int i = 0; i < BOARD_SIZE; i++) {
-		for (int j = 0; j < BOARD_SIZE; j++) {
-			if(board[i][j] == -1) printf("%c\t\t",'*'); //Bomba
-			else if(board[i][j] == -2) printf("%c\t\t",'-'); //Celula escondida
-			else if(board[i][j] == -3) printf("%c\t\t",'>'); //Flag
-			else printf("%d\t\t",board[i][j]);
-		}
-		printf("\n");
-	}
-}
-
-//Preenche o board com o valor passado como parametro
-void fillBoard(int board[BOARD_SIZE][BOARD_SIZE], int num){
-	for (int i = 0; i < BOARD_SIZE; i++) {
-		for (int j = 0; j < BOARD_SIZE; j++) {
-			board[i][j] = num;
-		}
-	}
-}
-
-//Retorna array de inteiros com duas coordenadas a partir da string
-int* getCoordinates(char* coordChar){
-	int* result = (int*)malloc(2*sizeof(int));
-
-	char* coordinate = strtok(coordChar, ",");
-
-	for(int i = 0; i < 2 && coordinate != NULL; i++){
-		result[i] = atoi(coordinate);
-		coordinate = strtok(NULL, ",");
-	}
-	return result;
+	// return;
 }
 
 //Confere os dados recebidos e realiza acoes para o cliente

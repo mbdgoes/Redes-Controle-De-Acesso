@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
 
 	connect(sock, addr, sizeof(storage)); //Conecta com o server
 
-	Message sentMessage;
+	
 	Message receivedData;
 	while (1) {
 		//Le a linha enviada no stdin e salva em command
@@ -31,20 +31,36 @@ int main(int argc, char *argv[]) {
 
 		int error = 0;
 		//Prepara a mensagem que sera enviada para o servidor (sentMessage)
-		computeInput(&sentMessage, command, &error); 
+		Message *sentMessage = computeInput(command, &error);
+		char *serializedMessage;
+		size_t messageSize = serializeMessage(sentMessage, &serializedMessage);
 		
 		//Se nao ha erro de input envia para o servidor
 		if(!error){
-			send(sock, &sentMessage, sizeof(struct Message), 0);
+			// send(sock, &sentMessage, sizeof(struct Message), 0);
+			send(sock, &messageSize, sizeof(size_t), 0);
+			send(sock, serializedMessage, messageSize, 0);
+			free(serializedMessage);
 			
-			//Recebe mensagem e salva em receivedData
-			recv(sock, &receivedData, sizeof(struct Message), 0);
-			
-			//Atualiza o campo atual com campo recebido do servidor
-			// memcpy(sentMessage.board, receivedData.board,sizeof(sentMessage.board));
+			// Recebe o tamanho da mensagem
+			size_t responseSize;
+			recv(sock, &responseSize, sizeof(size_t), 0);
 
-			//Confere os dados recebidos e decide se imprime o campo ou fecha conexao
-			handleReceivedData(&receivedData, sock);
+			// Aloca o buffer para a resposta e recebe a mensagem
+			char *responseBuffer = (char *)malloc(responseSize);
+			recv(sock, responseBuffer, responseSize, 0);
+
+			// Desserializa a mensagem
+			Message *receivedData = deserializeMessage(responseBuffer, responseSize);
+
+			// Libera o buffer da resposta
+			free(responseBuffer);
+
+			// Manipula os dados recebidos
+			handleReceivedData(receivedData, sock);
+
+			// Libera a mensagem recebida
+			freeMessage(receivedData);
 		}
 	}
 

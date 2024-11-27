@@ -48,6 +48,8 @@ struct gameSetup {
 //============ FUNCOES DE MENSAGEM =====================
 Message *createMessage(int type, size_t payloadSize, const char *payloadStrings[]);
 void freeMessage(Message *msg);
+size_t serializeMessage(const Message *msg, char **buffer);
+Message *deserializeMessage(const char *buffer, size_t bufferSize);
 
 //============ FUNCOES DE REDE =====================
 void DieWithUserMessage(const char *msg, const char *detail);
@@ -57,8 +59,8 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 //============= FUNCOES DO JOGO ====================
 int* getCoordinates(char* coordChar);
 void initializeBoard(struct gameSetup *gameSetup, const char *filename);
-void computeInput(struct Message *sentMessage, char command[BUFSIZE], int* error);
-void computeCommand(struct Message *action, struct Message *receivedData);
+Message* computeInput(char command[BUFSIZE], int* error);
+Message* computeCommand(struct Message *receivedData);
 void printBoard(int board[BOARD_SIZE][BOARD_SIZE]);
 void fillBoard(int board[BOARD_SIZE][BOARD_SIZE], int num);
 void handleReceivedData(struct Message* receivedData, int sock);
