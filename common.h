@@ -31,6 +31,7 @@
 #define WIN 6
 #define EXIT 7
 #define GAME_OVER 8
+#define REQ_USRADD 33
 
 //Estrutura da mensagem
 typedef struct Message{
@@ -45,7 +46,7 @@ struct gameSetup {
 };
 
 //============ FUNCOES DE MENSAGEM =====================
-Message *createMessage(int code, size_t payloadSize, const char *payloadStrings[]);
+Message *createMessage(int type, size_t payloadSize, const char *payloadStrings[]);
 void freeMessage(Message *msg);
 
 //============ FUNCOES DE REDE =====================

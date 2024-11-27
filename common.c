@@ -8,6 +8,49 @@ void DieWithUserMessage(const char *msg, const char *detail) {
 	exit(EXIT_FAILURE);
 }
 
+Message *createMessage(int type, size_t payloadSize, const char *payloadStrings[]) {
+    Message *msg = (Message *)malloc(sizeof(Message));
+    if (!msg) {
+        perror("Erro ao alocar memória para a mensagem");
+        exit(EXIT_FAILURE);
+    }
+
+    msg->type = type;
+
+    msg->payload = (char **)malloc(payloadSize * sizeof(char *));
+    if (!msg->payload) {
+        perror("Erro ao alocar memória para o payload");
+        free(msg);
+        exit(EXIT_FAILURE);
+    }
+    // Copiar as strings para o payload
+    msg->size = payloadSize;
+    for (size_t i = 0; i < payloadSize; i++) {
+        msg->payload[i] = strdup(payloadStrings[i]);
+        if (!msg->payload[i]) {
+            perror("Erro ao alocar memória para string");
+            for (size_t j = 0; j < i; j++) {
+                free(msg->payload[j]);
+            }
+            free(msg->payload);
+            free(msg);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    return msg;
+}
+
+void freeMessage(Message *msg) {
+    if (msg) {
+        for (size_t i = 0; i < msg->size; i++) {
+            free(msg->payload[i]);
+        }
+        free(msg->payload);
+        free(msg);
+    }
+}
+
 //Inicializa a estrutura do endereco com base no protocolo e na porta especificado
 int initServerSockaddr(const char *serverPortStr, const char *clientPortStr, struct sockaddr_storage *storage) {
 	uint16_t port = (uint16_t)atoi(serverPortStr);
@@ -91,8 +134,10 @@ void computeInput(struct Message *sentMessage, char command[BUFSIZE], int* error
 		token = strtok(NULL, " ");
 	}
 
-	if (strcmp(inputs[0], "start") == 0) {
-		sentMessage->type = START;
+	if (strcmp(inputs[0], "add") == 0) {
+		char* subset = malloc(2*sizeof(char));
+		for(int j=1;j<3;j++) subset[j] = inputs[j];
+		Message *sentMessage = createMessage(REQ_USRADD, 2, subset); 
 		return;
 	}
 	else if (strcmp(inputs[0], "reveal") == 0) {
@@ -127,8 +172,10 @@ void computeCommand(struct Message *action, struct Message *receivedData) {
 	int coordX, coordY;
 
 	switch(receivedData->type){
-		case START: 
-			action->type = STATE;
+		case REQ_USRADD: 
+			char **payload = (char **)malloc(sizeof(char *));
+			payload[0] = strdup("Message received");
+			Message *action = createMessage(STATE, 1, payload); 
 		break;
 
 		case REVEAL: ;
@@ -204,8 +251,8 @@ int* getCoordinates(char* coordChar){
 //Confere os dados recebidos e realiza acoes para o cliente
 void handleReceivedData(struct Message* receivedData, int sock){
 	switch(receivedData->type){
-		case STATE:
-
+		case REQ_USRADD:
+			printf("Done\n");
 		break;
 
 		case EXIT:

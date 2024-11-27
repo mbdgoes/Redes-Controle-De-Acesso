@@ -21,8 +21,8 @@ int main(int argc, char *argv[]) {
 
 	connect(sock, addr, sizeof(storage)); //Conecta com o server
 
-	struct Message sentMessage;
-	struct Message receivedData;
+	Message sentMessage;
+	Message receivedData;
 	while (1) {
 		//Le a linha enviada no stdin e salva em command
 		char command[BUFSIZE];
