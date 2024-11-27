@@ -174,6 +174,7 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 }
 
 //Faz o parsing do input do cliente
+//TODO: Trocar para switch-case?
 Message* computeInput(char command[BUFSIZE], int* error) {
 	char *inputs[BUFSIZE];
 	char *token = strtok(command, " ");
@@ -185,36 +186,14 @@ Message* computeInput(char command[BUFSIZE], int* error) {
 	}
 
 	if (strcmp(inputs[0], "add") == 0) {
-		// char* subset = malloc(2*sizeof(char));
-		// for(int j=1;j<3;j++) subset[j] = inputs[j];
 		return createMessage(REQ_USRADD, 2, (const char **)&inputs[1]);
 	}
-	else if (strcmp(inputs[0], "reveal") == 0) {
-		// sentMessage->type = REVEAL;
-		// return;
-	} 
-	else if (strcmp(inputs[0], "flag") == 0) {
-		// sentMessage->type = FLAG;
-		// return;
-	}
-	else if (strcmp(inputs[0], "remove_flag") == 0) {
-		// sentMessage->type = REMOVE_FLAG;
-		// return;
-	} 
-	else if (strcmp(inputs[0], "reset") == 0) {
-		// sentMessage->type = RESET;
-		// return;
-	} 
 	else if (strcmp(inputs[0], "exit") == 0) {
-		// sentMessage->type = EXIT;
 		return createMessage(EXIT, 0, NULL);
-		// return;
 	}
 	else {
 		fputs("error: command not found\n", stdout);
-		// return;
 	}
-	// return;
 }
 
 //Logica para receber mensagem do user e aplicar comandos ao board
@@ -229,24 +208,8 @@ Message* computeCommand(struct Message *receivedData) {
 			return createMessage(REQ_USRADD, 1, (const char **)payload); 
 		break;
 
-		case REVEAL: ;
-		//Fill
-		break;
-
-		case FLAG: ;
-		break;
-
-		case REMOVE_FLAG: ;
-
-		break;
-
-		case RESET:
-			// action->type = STATE;
-		break;
-
 		case EXIT:
 			printf("client disconnected\n");
-			// action->type = EXIT;
 		break;
 	}
 	// return;
@@ -262,14 +225,6 @@ void handleReceivedData(struct Message* receivedData, int sock){
 		case EXIT:
 			close(sock);
 			exit(0);
-		break;
-
-		case GAME_OVER:
-			printf("GAME OVER!\n");
-		break;
-
-		case WIN:
-			printf("YOU WIN!\n");
 		break;
 	}
 }
