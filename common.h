@@ -64,6 +64,7 @@ int initServerSockaddr(const char *proto, const char *portstr, struct sockaddr_s
 int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage);
 
 //============= FUNCOES DE DADOS ====================
+void setMessage(Message *message, int type, char payload[BUFSIZE]);
 void computeInput(Message *sentMessage, char command[BUFSIZE], int* error);
 void computeCommand(Message *action, Message *receivedData);
 void handleReceivedData(struct Message* receivedData, int sock);

@@ -27,7 +27,7 @@ int initServerSockaddr(const char *serverPortStr, const char *clientPortStr, str
 }
 
 void setMessage(Message *message, int type, char payload[BUFSIZE]){
-	message->type = REQ_USRADD;
+	message->type = type;
 	memcpy(message->payload, payload, sizeof(message->payload));
 	message->size = strlen(payload+1);
 };
