@@ -106,6 +106,7 @@ void computeCommand(Message *message, Message *receivedData) {
             // Construir a resposta: "User added {USER_ID}"
             snprintf(responsePayload, BUFSIZE, "User added: %s", userId);
 			setMessage(message, REQ_USRADD, responsePayload);
+			puts(responsePayload);
             break;
 		break;
 

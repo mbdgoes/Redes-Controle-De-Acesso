@@ -11,40 +11,56 @@
 #include "common.h"
 
 int main(int argc, char *argv[]) {
-	struct sockaddr_storage storage;
-	if (0 != addrParse(argv[1], argv[2], &storage)) {
-		DieWithUserMessage("Parameter(s)", "<Server Address> [<Server Port>]");
-	}
+    if (argc < 5) {
+        DieWithUserMessage("Parameters", "<Server Address> <User Server Port> <Location Server Port> <Location Code>");
+    }
 
-	int sock = socket(storage.ss_family, SOCK_STREAM, 0);
-	struct sockaddr *addr = (struct sockaddr *)(&storage);
+    char *serverAddress = argv[1];
+    char *userServerPort = argv[2];
+    char *locationServerPort = argv[3];
+    char *locationCode = argv[4];
 
-	connect(sock, addr, sizeof(storage)); //Conecta com o server
+    struct sockaddr_storage userServerStorage, locationServerStorage;
+    int userSock, locationSock;
 
-	
-	Message sentMessage;
-	Message receivedMessage;
-	while (1) {
-		//Le a linha enviada no stdin e salva em command
-		char command[BUFSIZE];
-		fgets(command, BUFSIZE - 1, stdin);
-		command[strcspn(command, "\n")] = 0;
+    addrParse(serverAddress, userServerPort, &userServerStorage);
+    addrParse(serverAddress, locationServerPort, &locationServerStorage);
+
+    userSock = socket(userServerStorage.ss_family, SOCK_STREAM, 0);
+    connect(userSock, (struct sockaddr *)&userServerStorage, sizeof(userServerStorage));
+    printf("Connected to User Server...\n");
+
+    locationSock = socket(locationServerStorage.ss_family, SOCK_STREAM, 0);
+    connect(locationSock, (struct sockaddr *)&locationServerStorage, sizeof(locationServerStorage));
+    printf("Connected to Location Server...\n");
+
+    Message sentMessage, receivedMessage;
+	fd_set readfds;
+    int maxfd = (userSock > locationSock) ? userSock : locationSock;
+
+    while (1) {
+        char command[BUFSIZE];
+        fgets(command, BUFSIZE - 1, stdin);
+        command[strcspn(command, "\n")] = 0;
 
 		int error = 0;
-		//Prepara a mensagem que sera enviada para o servidor (sentMessage)
-		computeInput(&sentMessage, command, &error);
-		//Se nao ha erro de input envia para o servidor
-		if(!error){
-			// send(sock, &sentMessage, sizeof(struct Message), 0);
-			send(sock, &sentMessage, sizeof(struct Message), 0);
-			
-			recv(sock, &receivedMessage, sizeof(struct Message), 0);
+        computeInput(&sentMessage, command, &error);
 
-			// Manipula os dados recebidos
-			handleReceivedData(&receivedMessage, sock);
-		}
-	}
+        if (sentMessage.type == REQ_USRADD || sentMessage.type == REQ_USRACCESS || sentMessage.type == EXIT) {
+            send(userSock, &sentMessage, sizeof(sentMessage), 0);
+            recv(userSock, &receivedMessage, sizeof(receivedMessage), 0);
+            handleReceivedData(&receivedMessage, userSock);
 
-	close(sock);
-	exit(0);
+        }
+         else if(sentMessage.type == REQ_LOCATION || sentMessage.type == REQ_LOCLIST || sentMessage.type == REQ_USRLOC ){
+
+             send(locationSock, &sentMessage, sizeof(sentMessage), 0);
+             recv(locationSock, &receivedMessage, sizeof(receivedMessage), 0);
+             handleReceivedData(&receivedMessage, locationSock);
+         }
+    }
+
+    close(userSock);
+    close(locationSock);
+    exit(0);
 }
