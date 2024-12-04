@@ -19,6 +19,8 @@ int main(int argc, char *argv[]) {
     // Parse the ports
     char *peerPortStr = argv[1];
     char *clientPortStr = argv[2];
+    UserServer userServer = {.userCount = 0};
+    LocationServer locationServer = {.locationDataCount = 0};
 
     // Initialize socket variables
     struct sockaddr_storage serverStorage;
@@ -44,29 +46,15 @@ int main(int argc, char *argv[]) {
     listen(peerSock, 10);
 
     int peerConnectionSock = -1;
-    if ((peerConnectionSock = socket(peerStorage.ss_family, SOCK_STREAM, 0)) >= 0) {
-        if (connect(peerConnectionSock, peerAddr, sizeof(peerStorage)) == 0) {
-            printf("Connected to peer server on port %s\n", peerPortStr);
-        } else {
-            printf("Failed to connect to peer server on port %s\n", peerPortStr);
-            close(peerConnectionSock);
-            peerConnectionSock = -1;
-        }
-    }
-
+    
     // Initialize file descriptor sets
     fd_set master, read_fds;
     FD_ZERO(&master);
     FD_SET(serverSock, &master);
     FD_SET(peerSock, &master);
-    if (peerConnectionSock != -1) {
-        FD_SET(peerConnectionSock, &master);
-    }
+
 
     int fdmax = (serverSock > peerSock) ? serverSock : peerSock;
-    if (peerConnectionSock > fdmax) {
-        fdmax = peerConnectionSock;
-    }
 
     Message receivedMessage, action;
     int newfd;
@@ -81,19 +69,7 @@ int main(int argc, char *argv[]) {
 
         for (int i = 0; i <= fdmax; i++) {
             if (FD_ISSET(i, &read_fds)) {
-				if (i == STDIN_FILENO) {
-                    // Server terminal input
-                    fgets(inputBuffer, BUFSIZE, stdin);
-                    inputBuffer[strcspn(inputBuffer, "\n")] = 0;
-
-                    if (strcmp(inputBuffer, "hello") == 0 && peerConnectionSock != -1) {
-                        Message testMessage;
-						setMessage(&testMessage, 99, inputBuffer);
-                        send(peerConnectionSock, &testMessage, sizeof(testMessage), 0);
-                        printf("Sent 'hello' to peer server\n");
-                    }
-				}
-                else if (i == serverSock) {
+                if (i == serverSock) {
                     // Handle incoming client connection
                     addrlen = sizeof remoteaddr;
                     newfd = accept(serverSock, (struct sockaddr *)&remoteaddr, &addrlen);
@@ -111,7 +87,19 @@ int main(int argc, char *argv[]) {
                     if (newfd > fdmax) {
                         fdmax = newfd;
                     }
-                    printf("Peer server connected\n");
+                    if ((peerConnectionSock = socket(peerStorage.ss_family, SOCK_STREAM, 0)) >= 0) {
+                        if (connect(peerConnectionSock, peerAddr, sizeof(peerStorage)) == 0) {
+                            printf("Connected to peer server on port %s\n", peerPortStr);
+                            FD_SET(peerConnectionSock, &master);
+                            if (peerConnectionSock > fdmax) {
+                                fdmax = peerConnectionSock;
+                            }
+                        } else {
+                            printf("Failed to connect to peer server on port %s\n", peerPortStr);
+                            close(peerConnectionSock);
+                            peerConnectionSock = -1;
+                        }
+                    }
 
                 } else if (i == peerConnectionSock) {
                     // Handle messages from connected peer server
@@ -131,7 +119,7 @@ int main(int argc, char *argv[]) {
                         close(i);
                         FD_CLR(i, &master);
                     } else {
-                        computeCommand(&action, &receivedMessage);
+                        computeCommand(&userServer, &locationServer, &action, &receivedMessage);
                         send(i, &action, sizeof(struct Message), 0);
 
                         // Forward the message to the peer server

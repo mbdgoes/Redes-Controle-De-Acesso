@@ -26,12 +26,6 @@ int initServerSockaddr(const char *serverPortStr, const char *clientPortStr, str
 	return 0;
 }
 
-void setMessage(Message *message, int type, char payload[BUFSIZE]){
-	message->type = type;
-	memcpy(message->payload, payload, sizeof(message->payload));
-	message->size = strlen(payload+1);
-};
-
 //Parse do endereco informado pelo cliente -> preenche a estrutura do socket
 //Retorna 0 se bem sucedido, -1 se erro
 int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage) {
@@ -66,6 +60,18 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 	return -1;
 }
 
+void setMessage(Message *message, int type, char payload[BUFSIZE]){
+	message->type = type;
+	memcpy(message->payload, payload, sizeof(message->payload));
+	message->size = strlen(payload+1);
+}
+
+void addUser(UserServer *server, char *userId, int isSpecial){
+	strncpy(server->userDatabase[server->userCount], userId,11);
+	server->specialPermissions[server->userCount] = isSpecial;
+	server->userCount++;
+}
+
 //Faz o parsing do input do cliente
 //TODO: Trocar para switch-case?
 void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
@@ -84,21 +90,27 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
         snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[2]);
 		setMessage(sentMessage, REQ_USRADD, payload);
 	}
+	else if (strcmp(inputs[0], "list") == 0) {
+		sentMessage->type = LIST_DEBUG;
+		sentMessage->size = 0;
+	}
 	else if (strcmp(inputs[0], "exit") == 0) {
 		sentMessage->type = EXIT;
 		sentMessage->size = 0;
-		}
+	}
 	else {
 		fputs("error: command not found\n", stdout);
 	}
 }
 
+
 // Computar resposta do user
-void computeCommand(Message *message, Message *receivedData) {
+void computeCommand(UserServer *userServer, LocationServer *locationServer, Message *message, Message *receivedData) {
+	char responsePayload[BUFSIZE] = {0};
+	
 	switch(receivedData->type){
 		case REQ_USRADD: 
             char userId[BUFSIZE] = {0};
-			char responsePayload[BUFSIZE] = {0};
             int isSpecial = 0;
 
             // Extrai os dois valores do payload
@@ -106,8 +118,24 @@ void computeCommand(Message *message, Message *receivedData) {
             // Construir a resposta: "User added {USER_ID}"
             snprintf(responsePayload, BUFSIZE, "User added: %s", userId);
 			setMessage(message, REQ_USRADD, responsePayload);
-			puts(responsePayload);
+			addUser(userServer, userId, isSpecial);
             break;
+		break;
+
+		case LIST_DEBUG:
+			int offset = 0;
+
+			// Concatena todos os usuários em `responsePayload`
+			for (int i = 0; i < userServer->userCount; i++) {
+				offset += snprintf(responsePayload + offset, BUFSIZE - offset, 
+								"User %d: %s\n", i + 1, userServer->userDatabase[i]);
+				if (offset >= BUFSIZE) {
+					break; // Evita estouro do buffer
+				}
+			}
+
+			// Preenche a mensagem de saída com os dados concatenados
+			setMessage(message, LIST_DEBUG, responsePayload);
 		break;
 
 		case EXIT:
@@ -121,8 +149,12 @@ void computeCommand(Message *message, Message *receivedData) {
 void handleReceivedData(struct Message* receivedData, int sock){
 	switch(receivedData->type){
 		case REQ_USRADD:
-			puts(receivedData->payload);
+			puts(receivedData->payload); 
 		break;
+
+		case LIST_DEBUG:
+    		printf("Received User List:\n%s", receivedData->payload);
+    	break;
 
 		case EXIT:
 			close(sock);

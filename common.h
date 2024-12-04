@@ -38,6 +38,7 @@
 #define OK 0
 #define EXIT -1
 #define REQ_LOCATION 44
+#define LIST_DEBUG 77
 
 //============ STRUCTS =============================
 typedef struct Message {
@@ -46,13 +47,13 @@ typedef struct Message {
     char payload[BUFSIZE]; // Payload fixo (máximo de 500 bytes)
 } Message;
 
-typedef struct {
+typedef struct UserServer{
     char userDatabase[100][11];
     int specialPermissions[100];
     int userCount;
 } UserServer;
 
-typedef struct {
+typedef struct LocationServer{
     char locationDatabase[100][11];
     int lastLocationSeen[100];
     int locationDataCount;
@@ -65,8 +66,9 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 
 //============= FUNCOES DE DADOS ====================
 void setMessage(Message *message, int type, char payload[BUFSIZE]);
+void addUser(UserServer *server, char *userId, int isSpecial);
 void computeInput(Message *sentMessage, char command[BUFSIZE], int* error);
-void computeCommand(Message *action, Message *receivedData);
+void computeCommand(UserServer *userServer, LocationServer *LocationServer, Message *action, Message *receivedData);
 void handleReceivedData(struct Message* receivedData, int sock);
 
 #endif
