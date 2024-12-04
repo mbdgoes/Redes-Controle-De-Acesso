@@ -66,6 +66,7 @@ void setMessage(Message *message, int type, char payload[BUFSIZE]){
 	message->size = strlen(payload+1);
 }
 
+//TODO: Add user logic (check if user exists)
 void addUser(UserServer *server, char *userId, int isSpecial){
 	strncpy(server->userDatabase[server->userCount], userId,11);
 	server->specialPermissions[server->userCount] = isSpecial;
@@ -91,12 +92,12 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
 		setMessage(sentMessage, REQ_USRADD, payload);
 	}
 	else if (strcmp(inputs[0], "list") == 0) {
-		sentMessage->type = LIST_DEBUG;
-		sentMessage->size = 0;
+		char nullPayload[BUFSIZE] = {0};
+		setMessage(sentMessage, LIST_DEBUG, nullPayload);
 	}
 	else if (strcmp(inputs[0], "exit") == 0) {
-		sentMessage->type = EXIT;
-		sentMessage->size = 0;
+		char nullPayload[BUFSIZE] = {0};
+		setMessage(sentMessage, EXIT, nullPayload);
 	}
 	else {
 		fputs("error: command not found\n", stdout);
@@ -139,7 +140,9 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
 		break;
 
 		case EXIT:
-			printf("client disconnected\n");
+			puts("client disconnected\n");
+			char nullPayload[BUFSIZE] = {0};
+			setMessage(message, EXIT, nullPayload);
 		break;
 		//add default...
 	}

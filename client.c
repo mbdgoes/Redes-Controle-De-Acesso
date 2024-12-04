@@ -65,10 +65,13 @@ int main(int argc, char *argv[]) {
             int error = 0;
             computeInput(&sentMessage, command, &error);
 
+            //TODO: add all codes
             if (sentMessage.type == REQ_USRADD || sentMessage.type == REQ_USRACCESS || sentMessage.type == EXIT) {
                 send(userSock, &sentMessage, sizeof(sentMessage), 0);
             } else if (sentMessage.type == REQ_LOCATION || sentMessage.type == REQ_LOCLIST || sentMessage.type == REQ_USRLOC) {
                 send(locationSock, &sentMessage, sizeof(sentMessage), 0);
+            }else{
+                send(userSock, &sentMessage, sizeof(sentMessage), 0);
             }
 
             if (sentMessage.type == EXIT) {
