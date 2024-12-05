@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
     char *peerPortStr = argv[1];
     char *clientPortStr = argv[2];
     UserServer userServer = {.userCount = 0};
-    LocationServer locationServer = {.locationDataCount = 0};
+    LocationServer locationServer = {.userCount = 0};
 
     // Initialize socket variables
     struct sockaddr_storage serverStorage;

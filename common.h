@@ -57,9 +57,9 @@ typedef struct UserServer{
 } UserServer;
 
 typedef struct LocationServer{
-    char locationDatabase[100][11];
+    char locationUserDatabase[100][11];
     int lastLocationSeen[100];
-    int locationDataCount;
+    int userCount;
 } LocationServer;
 
 //============ FUNCOES DE REDE =====================
@@ -70,6 +70,7 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 //============= FUNCOES DE DADOS ====================
 void setMessage(Message *message, int type, char* payload);
 void addUser(UserServer *server, Message* message, char *userId, int isSpecial);
+void findUser(LocationServer *locationServer, Message *message, char* userId);
 char* returnErrorMessage(Message *message);
 char* returnOkMessage(Message *message);
 void computeInput(Message *sentMessage, char command[BUFSIZE], int* error);

@@ -4,13 +4,13 @@
   
   ## To Do (Primeira parte)🚀
   - Conferir conexão p2p e conexão entre server
-    - Erro garantido: os dois servers estão abrindo todas as conexões, arrumar isso
-    - Lógica dos clientes
-  - Colocar o cadastro de pessoa -> Trocar função computeInput
-  - Colocar dois servers em conexão P2P
-  - Consulta de localização pelo server 
+    - AINDA ERRADO -> p2p deve escutar primeiro e o segundo server conectar
+  - Lógica para cadastrar localização do usuário
+  - Consulta de localização pelo server
+  - Próximas funções do server (próxima parte)
 
   ## Done 🔥 
   - Permitir tanto ipv4 quanto ipv6 
   - Pemitir o envio dos argumentos (1 cliente e servidor, lógica REQ_ADDR)
   - Lógica para armazenar as pessoas em struct para server
+  - Cadastro de pessoas no UserServer

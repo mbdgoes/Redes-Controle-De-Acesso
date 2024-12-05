@@ -90,7 +90,7 @@ char* returnOkMessage(Message *message){
 
 void addUser(UserServer *server, Message* message, char *userId, int isSpecial){
 	int userIndex = -1;
-	char* payload[BUFSIZE];
+	char payload[BUFSIZE];
 
 	for(int i = 0; i < server->userCount; i++){
 		if(strncmp(server->userDatabase[i], userId, 10) == 0){
@@ -102,19 +102,40 @@ void addUser(UserServer *server, Message* message, char *userId, int isSpecial){
 	if (userIndex != -1) { // user Existe -> atualizar isSpecial
         server->specialPermissions[userIndex] = isSpecial;
         setMessage(message, OK, "03");
-    } else{
-		if(server->userCount >= MAX_USERS){ //User nao existe -> server cheio
-			setMessage(message, ERROR, "17");
-		}
-		else{ //Adiciona novo usuario
-			puts(userId);
-			strncpy(server->userDatabase[server->userCount], userId, 10);
-			server->userDatabase[server->userCount][10] = '\0';
-			server->specialPermissions[server->userCount] = isSpecial;
-			server->userCount++;
-			setMessage(message, OK, "02");
+		return;
+    }
+	
+	if(server->userCount >= MAX_USERS){ //User nao existe -> server cheio
+		setMessage(message, ERROR, "17");
+		return;
+	}
+
+	//Adiciona novo usuario
+	strncpy(server->userDatabase[server->userCount], userId, 10);
+	server->userDatabase[server->userCount][10] = '\0';
+	server->specialPermissions[server->userCount] = isSpecial;
+	server->userCount++;
+	setMessage(message, OK, "02");
+}
+
+void findUser(LocationServer *server, Message *message, char* userId){
+	int userIndex = -1;
+	char payload[BUFSIZE];
+
+	for(int i = 0; i < server->userCount; i++){
+		if(strncmp(server->locationUserDatabase[i], userId, 10) == 0){
+			userIndex = i;
+			break;
 		}
 	}
+
+	if(userIndex == -1){
+		setMessage(message,ERROR,"18");
+		return;
+	}
+
+	snprintf(payload, BUFSIZE, "Current location: %s", server->locationUserDatabase[userIndex]);
+	setMessage(message, RES_USRLOC, payload);
 }
 
 //Faz o parsing do input do cliente
@@ -142,6 +163,11 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
 		char nullPayload[BUFSIZE] = {0};
 		setMessage(sentMessage, EXIT, nullPayload);
 	}
+	else if (strcmp(inputs[0], "find") == 0) {
+		char payload[BUFSIZE] = {0};
+		snprintf(payload, BUFSIZE, "%s", inputs[1]);
+		setMessage(sentMessage, REQ_USRLOC, payload);
+	}
 	else {
 		fputs("error: command not found\n", stdout);
 	}
@@ -151,15 +177,20 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
 // Computar resposta do user
 void computeCommand(UserServer *userServer, LocationServer *locationServer, Message *message, Message *receivedData) {
 	char responsePayload[BUFSIZE] = {0};
+	char userId[BUFSIZE] = {0};
 	
 	switch(receivedData->type){
 		case REQ_USRADD: 
-            char userId[BUFSIZE] = {0};
             int isSpecial = 0;
 
             sscanf(receivedData->payload, "%s %d", userId, &isSpecial);
 			addUser(userServer, message, userId, isSpecial);
             break;
+		break;
+
+		case REQ_USRLOC:
+			sscanf(receivedData->payload, "%s", userId);
+			findUser(locationServer, message, userId);
 		break;
 
 		case LIST_DEBUG:
@@ -183,7 +214,10 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
 			char nullPayload[BUFSIZE] = {0};
 			setMessage(message, EXIT, nullPayload);
 		break;
-		//add default...
+		
+		default:
+			puts("Command not found\n");
+		break;
 	}
 }
 
@@ -192,6 +226,10 @@ void handleReceivedData(struct Message* receivedData, int sock){
 	switch(receivedData->type){
 		case REQ_USRADD:
 			puts(receivedData->payload); 
+		break;
+
+		case RES_USRLOC:
+			puts(receivedData->payload);
 		break;
 
 		case LIST_DEBUG:
