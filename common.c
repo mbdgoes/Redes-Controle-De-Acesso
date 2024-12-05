@@ -60,21 +60,64 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 	return -1;
 }
 
-void setMessage(Message *message, int type, char payload[BUFSIZE]){
+void setMessage(Message *message, int type, char* payload){
 	message->type = type;
-	memcpy(message->payload, payload, sizeof(message->payload));
-	message->size = strlen(payload+1);
+	size_t payloadLen = strlen(payload);
+
+	if(payloadLen >= BUFSIZE) { //Evitar overflow
+		payloadLen = BUFSIZE - 1;
+	}
+	memcpy(message->payload, payload, payloadLen);
+	message->payload[payloadLen] = '\0'; //Garante null terminator
+	message->size = payloadLen;
 }
 
-//TODO: Add user logic (check if user exists)
-void addUser(UserServer *server, char *userId, int isSpecial){
-	strncpy(server->userDatabase[server->userCount], userId,11);
-	server->specialPermissions[server->userCount] = isSpecial;
-	server->userCount++;
+char* returnErrorMessage(Message *message){
+	if(strcmp(message->payload,"01")==0) return "Peer limit excedeed";
+	if(strcmp(message->payload,"02")==0) return "Peer not found";
+	if(strcmp(message->payload,"09")==0) return "Client limit exceeded";
+	if(strcmp(message->payload,"10")==0) return "Client not found";
+	if(strcmp(message->payload,"17")==0) return "User limit exceeded";
+	if(strcmp(message->payload,"18")==0) return "User not found";
+	if(strcmp(message->payload,"19")==0) return "Permission denied";
+}
+
+char* returnOkMessage(Message *message){
+	if(strcmp(message->payload,"01")==0) return "Successful disconnect";
+	if(strcmp(message->payload,"02")==0) return "Successful create";
+	if(strcmp(message->payload,"03")==0) return "Successful update";
+}
+
+void addUser(UserServer *server, Message* message, char *userId, int isSpecial){
+	int userIndex = -1;
+	char* payload[BUFSIZE];
+
+	for(int i = 0; i < server->userCount; i++){
+		if(strncmp(server->userDatabase[i], userId, 10) == 0){
+			userIndex = i;
+			break;
+		}
+	}
+
+	if (userIndex != -1) { // user Existe -> atualizar isSpecial
+        server->specialPermissions[userIndex] = isSpecial;
+        setMessage(message, OK, "03");
+    } else{
+		if(server->userCount >= MAX_USERS){ //User nao existe -> server cheio
+			setMessage(message, ERROR, "17");
+		}
+		else{ //Adiciona novo usuario
+			puts(userId);
+			strncpy(server->userDatabase[server->userCount], userId, 10);
+			server->userDatabase[server->userCount][10] = '\0';
+			server->specialPermissions[server->userCount] = isSpecial;
+			server->userCount++;
+			setMessage(message, OK, "02");
+		}
+	}
 }
 
 //Faz o parsing do input do cliente
-//TODO: Trocar para switch-case?
 void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
 	char *inputs[BUFSIZE];
 	char *token = strtok(command, " ");
@@ -114,24 +157,20 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             char userId[BUFSIZE] = {0};
             int isSpecial = 0;
 
-            // Extrai os dois valores do payload
             sscanf(receivedData->payload, "%s %d", userId, &isSpecial);
-            // Construir a resposta: "User added {USER_ID}"
-            snprintf(responsePayload, BUFSIZE, "User added: %s", userId);
-			setMessage(message, REQ_USRADD, responsePayload);
-			addUser(userServer, userId, isSpecial);
+			addUser(userServer, message, userId, isSpecial);
             break;
 		break;
 
 		case LIST_DEBUG:
 			int offset = 0;
 
-			// Concatena todos os usuários em `responsePayload`
+			// Concatena todos os usuários em 'responsePayload'
 			for (int i = 0; i < userServer->userCount; i++) {
 				offset += snprintf(responsePayload + offset, BUFSIZE - offset, 
 								"User %d: %s\n", i + 1, userServer->userDatabase[i]);
 				if (offset >= BUFSIZE) {
-					break; // Evita estouro do buffer
+					break;
 				}
 			}
 
@@ -159,9 +198,21 @@ void handleReceivedData(struct Message* receivedData, int sock){
     		printf("Received User List:\n%s", receivedData->payload);
     	break;
 
+		case ERROR:
+			puts(returnErrorMessage(receivedData));
+		break;
+
+		case OK:
+			puts(returnOkMessage(receivedData));
+		break;
+
 		case EXIT:
 			close(sock);
 			exit(0);
+		break;
+
+		default:
+			puts("Invalid received message type");
 		break;
 	}
 }

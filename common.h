@@ -14,31 +14,34 @@
 #include <sys/select.h>
 
 //================ CONSTANTES ====================
-#define BUFSIZE 500
+#define BUFSIZE       500
+#define MAX_USERS     1
 
-#define EXIT -1
-#define REQ_CONNPEER 17
-#define RES_CONNPEER 18
-#define REQ_DISCPEER 19
-#define REQ_CONN 20
-#define RES_CONN 21
-#define REQ_DISC 22
-#define REQ_USRADD 33
+#define EXIT          -1
+#define REQ_CONNPEER  17
+#define RES_CONNPEER  18
+#define REQ_DISCPEER  19
+#define REQ_CONN      20
+#define RES_CONN      21
+#define REQ_DISC      22
+
+#define REQ_USRADD    33
 #define REQ_USRACCESS 34
 #define RES_USRACCESS 35
-#define REQ_LOCREG 36
-#define RES_LOCREG 37
-#define REQ_USRLOC 38
-#define RES_USRLOC 39
-#define REQ_LOCLIST 40
-#define RES_LOCLIST 41
-#define REQ_USRAUTH 42
-#define RES_USRAUTH 43
-#define ERROR 255
-#define OK 0
-#define EXIT -1
-#define REQ_LOCATION 44
-#define LIST_DEBUG 77
+#define REQ_LOCREG    36
+#define RES_LOCREG    37
+#define REQ_USRLOC    38
+#define RES_USRLOC    39
+#define REQ_LOCLIST   40
+#define RES_LOCLIST   41
+#define REQ_USRAUTH   42
+#define RES_USRAUTH   43
+
+#define ERROR         255
+#define OK            0
+
+#define REQ_LOCATION  44
+#define LIST_DEBUG    77
 
 //============ STRUCTS =============================
 typedef struct Message {
@@ -65,8 +68,10 @@ int initServerSockaddr(const char *proto, const char *portstr, struct sockaddr_s
 int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage);
 
 //============= FUNCOES DE DADOS ====================
-void setMessage(Message *message, int type, char payload[BUFSIZE]);
-void addUser(UserServer *server, char *userId, int isSpecial);
+void setMessage(Message *message, int type, char* payload);
+void addUser(UserServer *server, Message* message, char *userId, int isSpecial);
+char* returnErrorMessage(Message *message);
+char* returnOkMessage(Message *message);
 void computeInput(Message *sentMessage, char command[BUFSIZE], int* error);
 void computeCommand(UserServer *userServer, LocationServer *LocationServer, Message *action, Message *receivedData);
 void handleReceivedData(struct Message* receivedData, int sock);
