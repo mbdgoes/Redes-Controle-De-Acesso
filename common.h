@@ -15,7 +15,7 @@
 
 //================ CONSTANTES ====================
 #define BUFSIZE       500
-#define MAX_USERS     1
+#define MAX_USERS     30
 
 #define EXIT          -1
 #define REQ_CONNPEER  17

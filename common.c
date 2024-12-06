@@ -107,7 +107,7 @@ void addUser(UserServer *server, Message* message, char *userId, int isSpecial){
 			setMessage(message, ERROR, "17");
 		}
 		else{ //Adiciona novo usuario
-			puts(userId);
+			puts("DEBUG: user added");
 			strncpy(server->userDatabase[server->userCount], userId, 10);
 			server->userDatabase[server->userCount][10] = '\0';
 			server->specialPermissions[server->userCount] = isSpecial;
@@ -159,7 +159,6 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
 
             sscanf(receivedData->payload, "%s %d", userId, &isSpecial);
 			addUser(userServer, message, userId, isSpecial);
-            break;
 		break;
 
 		case LIST_DEBUG:
@@ -183,7 +182,10 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
 			char nullPayload[BUFSIZE] = {0};
 			setMessage(message, EXIT, nullPayload);
 		break;
-		//add default...
+		
+		default:
+			puts("Command not found...");
+		break;
 	}
 }
 
