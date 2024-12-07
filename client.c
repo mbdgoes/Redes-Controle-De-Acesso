@@ -31,11 +31,11 @@ int main(int argc, char *argv[]) {
     // Create sockets and connect to servers
     userSock = socket(userServerStorage.ss_family, SOCK_STREAM, 0);
     connect(userSock, (struct sockaddr *)&userServerStorage, sizeof(userServerStorage));
-    printf("Connected to User Server on port %s...\n", userServerPort);
+    printf("DEBUG: Connected to User Server on port %s...\n", userServerPort);
 
     locationSock = socket(locationServerStorage.ss_family, SOCK_STREAM, 0);
     connect(locationSock, (struct sockaddr *)&locationServerStorage, sizeof(locationServerStorage));
-    printf("Connected to Location Server on port %s...\n", locationServerPort);
+    printf("DEBUG: Connected to Location Server on port %s...\n", locationServerPort);
 
     Message sentMessage, receivedMessage;
     fd_set masterSet, workingSet;
@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
             }
 
             if (sentMessage.type == EXIT) {
-                printf("Exiting client...\n");
+                printf("DEBUG: Exiting client...\n");
                 break;
             }
         }

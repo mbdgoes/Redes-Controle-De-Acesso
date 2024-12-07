@@ -102,40 +102,19 @@ void addUser(UserServer *server, Message* message, char *userId, int isSpecial){
 	if (userIndex != -1) { // user Existe -> atualizar isSpecial
         server->specialPermissions[userIndex] = isSpecial;
         setMessage(message, OK, "03");
-		return;
-    }
-	
-	if(server->userCount >= MAX_USERS){ //User nao existe -> server cheio
-		setMessage(message, ERROR, "17");
-		return;
-	}
-
-	//Adiciona novo usuario
-	strncpy(server->userDatabase[server->userCount], userId, 10);
-	server->userDatabase[server->userCount][10] = '\0';
-	server->specialPermissions[server->userCount] = isSpecial;
-	server->userCount++;
-	setMessage(message, OK, "02");
-}
-
-void findUser(LocationServer *server, Message *message, char* userId){
-	int userIndex = -1;
-	char payload[BUFSIZE];
-
-	for(int i = 0; i < server->userCount; i++){
-		if(strncmp(server->locationUserDatabase[i], userId, 10) == 0){
-			userIndex = i;
-			break;
+    } else{
+		if(server->userCount >= MAX_USERS){ //User nao existe -> server cheio
+			setMessage(message, ERROR, "17");
+		}
+		else{ //Adiciona novo usuario
+			puts("DEBUG: user added");
+			strncpy(server->userDatabase[server->userCount], userId, 10);
+			server->userDatabase[server->userCount][10] = '\0';
+			server->specialPermissions[server->userCount] = isSpecial;
+			server->userCount++;
+			setMessage(message, OK, "02");
 		}
 	}
-
-	if(userIndex == -1){
-		setMessage(message,ERROR,"18");
-		return;
-	}
-
-	snprintf(payload, BUFSIZE, "Current location: %s", server->locationUserDatabase[userIndex]);
-	setMessage(message, RES_USRLOC, payload);
 }
 
 //Faz o parsing do input do cliente
@@ -185,7 +164,6 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
 
             sscanf(receivedData->payload, "%s %d", userId, &isSpecial);
 			addUser(userServer, message, userId, isSpecial);
-            break;
 		break;
 
 		case REQ_USRLOC:
