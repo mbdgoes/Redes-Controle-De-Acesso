@@ -117,6 +117,26 @@ void addUser(UserServer *server, Message* message, char *userId, int isSpecial){
 	}
 }
 
+void findUser(LocationServer *server, Message *message, char* userId){
+	int userIndex = -1;
+	char payload[BUFSIZE];
+
+	for(int i = 0; i < server->userCount; i++){
+		if(strncmp(server->locationUserDatabase[i], userId, 10) == 0){
+			userIndex = i;
+			break;
+		}
+	}
+
+	if(userIndex == -1){
+		setMessage(message,ERROR,"18");
+		return;
+	}
+
+	snprintf(payload, BUFSIZE, "Current location: %s", server->locationUserDatabase[userIndex]);
+	setMessage(message, RES_USRLOC, payload);
+}
+
 //Faz o parsing do input do cliente
 void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
 	char *inputs[BUFSIZE];
