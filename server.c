@@ -16,19 +16,16 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // Parse the ports
     char *peerPortStr = argv[1];
     char *clientPortStr = argv[2];
     UserServer userServer = {.userCount = 0};
     LocationServer locationServer = {.userCount = 0};
 
-    // Initialize socket variables
     struct sockaddr_storage serverStorage;
-
-    // Initialize the server socket
     initServerSockaddr(clientPortStr, NULL, &serverStorage);
     int serverSock = socket(serverStorage.ss_family, SOCK_STREAM, 0);
 
+    // Permite ipv4 e ipv6
     int enableDualStack = 0;
     setsockopt(serverSock, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack));
 
@@ -36,7 +33,7 @@ int main(int argc, char *argv[]) {
     bind(serverSock, serverAddr, sizeof(serverStorage));
     listen(serverSock, 10);
 
-    // Open a socket for the P2P connection on the peer port
+    // Abre um socket para P2P
     struct sockaddr_storage peerStorage;
     initServerSockaddr(peerPortStr, NULL, &peerStorage);
     int peerSock = socket(peerStorage.ss_family, SOCK_STREAM, 0);
@@ -47,7 +44,7 @@ int main(int argc, char *argv[]) {
 
     int peerConnectionSock = -1;
     
-    // Initialize file descriptor sets
+    // Adiciona o socket P2P e do cliente no master set
     fd_set master, read_fds;
     FD_ZERO(&master);
     FD_SET(serverSock, &master);
@@ -61,26 +58,22 @@ int main(int argc, char *argv[]) {
     struct sockaddr_storage remoteaddr;
     socklen_t addrlen;
 
-	char inputBuffer[BUFSIZE]; //test
-
     while (1) {
         read_fds = master;
         select(fdmax + 1, &read_fds, NULL, NULL, NULL);
 
         for (int i = 0; i <= fdmax; i++) {
             if (FD_ISSET(i, &read_fds)) {
-                if (i == serverSock) {
-                    // Handle incoming client connection
+                if (i == serverSock) { //Conexao inicial do cliente
                     addrlen = sizeof remoteaddr;
                     newfd = accept(serverSock, (struct sockaddr *)&remoteaddr, &addrlen);
                     FD_SET(newfd, &master);
                     if (newfd > fdmax) {
                         fdmax = newfd;
                     }
-                    printf("New client connected\n");
+                    printf("DEBUG: New client connected\n");
 
-                } else if (i == peerSock) {
-                    // Handle incoming peer connection
+                } else if (i == peerSock) { //Conexao do peer | TODO: Refazer essa parte -> mensagem de conexao
                     addrlen = sizeof remoteaddr;
                     newfd = accept(peerSock, (struct sockaddr *)&remoteaddr, &addrlen);
                     FD_SET(newfd, &master);
@@ -89,31 +82,26 @@ int main(int argc, char *argv[]) {
                     }
                     if ((peerConnectionSock = socket(peerStorage.ss_family, SOCK_STREAM, 0)) >= 0) {
                         if (connect(peerConnectionSock, peerAddr, sizeof(peerStorage)) == 0) {
-                            printf("Connected to peer server on port %s\n", peerPortStr);
+                            printf("DEBUG: Connected to peer server on port %s\n", peerPortStr);
                             FD_SET(peerConnectionSock, &master);
                             if (peerConnectionSock > fdmax) {
                                 fdmax = peerConnectionSock;
                             }
-                        } else {
-                            printf("Failed to connect to peer server on port %s\n", peerPortStr);
+                        } else { //Nao conseguiu conectar
                             close(peerConnectionSock);
                             peerConnectionSock = -1;
                         }
                     }
 
-                } else if (i == peerConnectionSock) {
-                    // Handle messages from connected peer server
+                } else if (i == peerConnectionSock) { //Mensagens do Peer
                     if (recv(i, &receivedMessage, sizeof(receivedMessage), 0) > 0) {
-                        printf("Received message from peer server\n");
-                        // Process received message
+                        printf("DEBUG: Received message from peer server\n");
                     } else {
-                        printf("Peer server disconnected\n");
                         close(i);
                         FD_CLR(i, &master);
                     }
 
-                } else {
-                    // Handle messages from clients
+                } else { //Mensagens dos clientes
                     if (recv(i, &receivedMessage, sizeof(Message), 0) <= 0) {
                         printf("Client disconnected\n");
                         close(i);
@@ -122,10 +110,10 @@ int main(int argc, char *argv[]) {
                         computeCommand(&userServer, &locationServer, &action, &receivedMessage);
                         send(i, &action, sizeof(struct Message), 0);
 
-                        // Forward the message to the peer server
+                        // Passa a mensagem pro peer
                         if (peerConnectionSock != -1) {
                             send(peerConnectionSock, &action, sizeof(struct Message), 0);
-                            printf("Forwarded message to peer server\n");
+                            printf("DEBUG: Forwarded message to peer server\n");
                         }
                     }
                 }

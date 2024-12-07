@@ -17,7 +17,7 @@ int initServerSockaddr(const char *serverPortStr, const char *clientPortStr, str
 	}
 	port = htons(port); //host bytes para network bytes
 
-	memset(storage, 0, sizeof(*storage)); //zerar estrutura
+	memset(storage, 0, sizeof(*storage));
 
 	struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)storage;
 	addr6->sin6_family = AF_INET6;
@@ -27,7 +27,6 @@ int initServerSockaddr(const char *serverPortStr, const char *clientPortStr, str
 }
 
 //Parse do endereco informado pelo cliente -> preenche a estrutura do socket
-//Retorna 0 se bem sucedido, -1 se erro
 int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage) {
 	if (addrstr == NULL || portstr == NULL)
 		return -1;
@@ -68,7 +67,7 @@ void setMessage(Message *message, int type, char* payload){
 		payloadLen = BUFSIZE - 1;
 	}
 	memcpy(message->payload, payload, payloadLen);
-	message->payload[payloadLen] = '\0'; //Garante null terminator
+	message->payload[payloadLen] = '\0';
 	message->size = payloadLen;
 }
 

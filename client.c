@@ -24,11 +24,10 @@ int main(int argc, char *argv[]) {
     struct sockaddr_storage userServerStorage, locationServerStorage;
     int userSock, locationSock;
 
-    // Parse server addresses and ports
     addrParse(serverAddress, userServerPort, &userServerStorage);
     addrParse(serverAddress, locationServerPort, &locationServerStorage);
 
-    // Create sockets and connect to servers
+    // Criacao dos sockets
     userSock = socket(userServerStorage.ss_family, SOCK_STREAM, 0);
     connect(userSock, (struct sockaddr *)&userServerStorage, sizeof(userServerStorage));
     printf("DEBUG: Connected to User Server on port %s...\n", userServerPort);
@@ -41,7 +40,7 @@ int main(int argc, char *argv[]) {
     fd_set masterSet, workingSet;
     FD_ZERO(&masterSet);
 
-    // Add userSock and locationSock to the master set
+    // Socket de user e location no master set
     FD_SET(userSock, &masterSet);
     FD_SET(locationSock, &masterSet);
     int maxfd = (userSock > locationSock) ? userSock : locationSock;
@@ -50,22 +49,21 @@ int main(int argc, char *argv[]) {
         char command[BUFSIZE];
         workingSet = masterSet;
 
-        // Wait for input or server response
+        // Espera o input ou resposta do server
         fflush(stdout);
 
-        // Use `select` to handle multiple sockets and standard input
-        FD_SET(STDIN_FILENO, &workingSet); // Add stdin to the set
+        // Use select para multiplos sockets
+        FD_SET(STDIN_FILENO, &workingSet);
         int activity = select(maxfd + 1, &workingSet, NULL, NULL, NULL);
 
-        if (FD_ISSET(STDIN_FILENO, &workingSet)) {
-            // User input received
+        if (FD_ISSET(STDIN_FILENO, &workingSet)) { //Input do usuario
             fgets(command, BUFSIZE - 1, stdin);
             command[strcspn(command, "\n")] = 0;
 
             int error = 0;
             computeInput(&sentMessage, command, &error);
 
-            //TODO: add all codes
+            //TODO: Revisar essa logica (adicionar os outros codigos?)
             if (sentMessage.type == REQ_USRADD || sentMessage.type == REQ_USRACCESS || sentMessage.type == EXIT) {
                 send(userSock, &sentMessage, sizeof(sentMessage), 0);
             } else if (sentMessage.type == REQ_LOCATION || sentMessage.type == REQ_LOCLIST || sentMessage.type == REQ_USRLOC) {
@@ -80,7 +78,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // Check if there is data from either server
+        // Checa se os dados vieram de um dos dois servers
         if (FD_ISSET(userSock, &workingSet)) {
             recv(userSock, &receivedMessage, sizeof(receivedMessage), 0);
             handleReceivedData(&receivedMessage, userSock);
@@ -92,7 +90,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Clean up sockets
     close(userSock);
     close(locationSock);
     return 0;

@@ -40,7 +40,7 @@
 #define ERROR         255
 #define OK            0
 
-#define REQ_LOCATION  44
+#define REQ_LOCATION  44 //debug
 #define LIST_DEBUG    77
 
 //============ STRUCTS =============================
