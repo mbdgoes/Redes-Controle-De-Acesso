@@ -1,5 +1,4 @@
 #include <arpa/inet.h>
-#include <inttypes.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,54 +21,89 @@ int main(int argc, char *argv[]) {
     char *locationCode = argv[4];
 
     struct sockaddr_storage userServerStorage, locationServerStorage;
-    int userSock, locationSock;
+    int userSock = -1, locationSock = -1;
 
-    addrParse(serverAddress, userServerPort, &userServerStorage);
-    addrParse(serverAddress, locationServerPort, &locationServerStorage);
+    // Connect to User Server
+    if (addrParse(serverAddress, userServerPort, &userServerStorage) == 0) {
+        userSock = socket(userServerStorage.ss_family, SOCK_STREAM, 0);
+        if (userSock != -1) {
+            if (connect(userSock, (struct sockaddr *)&userServerStorage, sizeof(userServerStorage)) == 0) {
+                printf("DEBUG: Connected to User Server on port %s...\n", userServerPort);
+            } else {
+                perror("Failed to connect to User Server");
+                close(userSock);
+                userSock = -1;
+            }
+        }
+    }
 
-    // Criacao dos sockets
-    userSock = socket(userServerStorage.ss_family, SOCK_STREAM, 0);
-    connect(userSock, (struct sockaddr *)&userServerStorage, sizeof(userServerStorage));
-    printf("DEBUG: Connected to User Server on port %s...\n", userServerPort);
+    // Connect to Location Server
+    if (addrParse(serverAddress, locationServerPort, &locationServerStorage) == 0) {
+        locationSock = socket(locationServerStorage.ss_family, SOCK_STREAM, 0);
+        if (locationSock != -1) {
+            if (connect(locationSock, (struct sockaddr *)&locationServerStorage, sizeof(locationServerStorage)) == 0) {
+                printf("DEBUG: Connected to Location Server on port %s...\n", locationServerPort);
+            } else {
+                perror("Failed to connect to Location Server");
+                close(locationSock);
+                locationSock = -1;
+            }
+        }
+    }
 
-    locationSock = socket(locationServerStorage.ss_family, SOCK_STREAM, 0);
-    connect(locationSock, (struct sockaddr *)&locationServerStorage, sizeof(locationServerStorage));
-    printf("DEBUG: Connected to Location Server on port %s...\n", locationServerPort);
+    if (userSock == -1 || locationSock == -1) {
+        printf("Failed to connect to one or both servers\n");
+        if (userSock != -1) close(userSock);
+        if (locationSock != -1) close(locationSock);
+        exit(EXIT_FAILURE);
+    }
 
-    Message sentMessage, receivedMessage;
     fd_set masterSet, workingSet;
     FD_ZERO(&masterSet);
-
-    // Socket de user e location no master set
     FD_SET(userSock, &masterSet);
     FD_SET(locationSock, &masterSet);
+    FD_SET(STDIN_FILENO, &masterSet);
+
     int maxfd = (userSock > locationSock) ? userSock : locationSock;
+    maxfd = (STDIN_FILENO > maxfd) ? STDIN_FILENO : maxfd;
+
+    Message sentMessage, receivedMessage;
 
     while (1) {
-        char command[BUFSIZE];
         workingSet = masterSet;
+        if (select(maxfd + 1, &workingSet, NULL, NULL, NULL) < 0) {
+            perror("select error");
+            break;
+        }
 
-        // Espera o input ou resposta do server
-        fflush(stdout);
-
-        // Use select para multiplos sockets
-        FD_SET(STDIN_FILENO, &workingSet);
-        int activity = select(maxfd + 1, &workingSet, NULL, NULL, NULL);
-
-        if (FD_ISSET(STDIN_FILENO, &workingSet)) { //Input do usuario
+        if (FD_ISSET(STDIN_FILENO, &workingSet)) {
+            char command[BUFSIZE];
             fgets(command, BUFSIZE - 1, stdin);
             command[strcspn(command, "\n")] = 0;
 
             int error = 0;
+            memset(&sentMessage, 0, sizeof(Message));  // Clear the message structure
             computeInput(&sentMessage, command, &error);
 
-            //TODO: Revisar essa logica (adicionar os outros codigos?)
+            if (error) {
+                printf("Error processing command\n");
+                continue;
+            }
+
+            int targetSocket = -1;
             if (sentMessage.type == REQ_USRADD || sentMessage.type == REQ_USRACCESS || sentMessage.type == EXIT) {
-                send(userSock, &sentMessage, sizeof(sentMessage), 0);
+                targetSocket = userSock;
             } else if (sentMessage.type == REQ_LOCATION || sentMessage.type == REQ_LOCLIST || sentMessage.type == REQ_USRLOC) {
-                send(locationSock, &sentMessage, sizeof(sentMessage), 0);
-            }else{
-                send(userSock, &sentMessage, sizeof(sentMessage), 0);
+                targetSocket = locationSock;
+            } else if (sentMessage.type == LIST_DEBUG) {
+                targetSocket = userSock;
+            }
+
+            if (targetSocket != -1) {
+                if (send(targetSocket, &sentMessage, sizeof(Message), 0) < 0) {
+                    perror("send failed");
+                    break;
+                }
             }
 
             if (sentMessage.type == EXIT) {
@@ -78,14 +112,21 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // Checa se os dados vieram de um dos dois servers
         if (FD_ISSET(userSock, &workingSet)) {
-            recv(userSock, &receivedMessage, sizeof(receivedMessage), 0);
+            int bytesReceived = recv(userSock, &receivedMessage, sizeof(Message), 0);
+            if (bytesReceived <= 0) {
+                printf("User server disconnected\n");
+                break;
+            }
             handleReceivedData(&receivedMessage, userSock);
         }
 
         if (FD_ISSET(locationSock, &workingSet)) {
-            recv(locationSock, &receivedMessage, sizeof(receivedMessage), 0);
+            int bytesReceived = recv(locationSock, &receivedMessage, sizeof(Message), 0);
+            if (bytesReceived <= 0) {
+                printf("Location server disconnected\n");
+                break;
+            }
             handleReceivedData(&receivedMessage, locationSock);
         }
     }

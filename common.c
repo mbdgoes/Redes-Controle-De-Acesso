@@ -59,16 +59,18 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 	return -1;
 }
 
-void setMessage(Message *message, int type, char* payload){
-	message->type = type;
-	size_t payloadLen = strlen(payload);
+void setMessage(Message *message, int type, char* payload) {
+    if (!message || !payload) return;
+    
+    message->type = type;
+    size_t payloadLen = strlen(payload);
 
-	if(payloadLen >= BUFSIZE) { //Evitar overflow
-		payloadLen = BUFSIZE - 1;
-	}
-	memcpy(message->payload, payload, payloadLen);
-	message->payload[payloadLen] = '\0';
-	message->size = payloadLen;
+    if(payloadLen >= BUFSIZE) {
+        payloadLen = BUFSIZE - 1;
+    }
+    memset(message->payload, 0, BUFSIZE);  // Clear the payload buffer
+    memcpy(message->payload, payload, payloadLen);
+    message->size = payloadLen;
 }
 
 char* returnErrorMessage(Message *message){
@@ -138,37 +140,54 @@ void findUser(LocationServer *server, Message *message, char* userId){
 
 //Faz o parsing do input do cliente
 void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
-	char *inputs[BUFSIZE];
-	char *token = strtok(command, " ");
-	int count = 0;
+    char *inputs[BUFSIZE];
+    char *token = strtok(command, " ");
+    int count = 0;
+    *error = 0;
 
-	//Tokenizar os comandos
-	while (token != NULL) {
-		inputs[count++] = token;
-		token = strtok(NULL, " ");
-	}
+    if (token == NULL) {
+        *error = 1;
+        return;
+    }
 
-	if (strcmp(inputs[0], "add") == 0) {
+    // Tokenize the commands
+    while (token != NULL && count < BUFSIZE) {
+        inputs[count++] = token;
+        token = strtok(NULL, " ");
+    }
+
+    memset(sentMessage, 0, sizeof(Message));  // Clear the message structure
+
+    if (strcmp(inputs[0], "add") == 0) {
+        if (count < 3) {
+            *error = 1;
+            return;
+        }
         char payload[BUFSIZE] = {0};
         snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[2]);
-		setMessage(sentMessage, REQ_USRADD, payload);
-	}
-	else if (strcmp(inputs[0], "list") == 0) {
-		char nullPayload[BUFSIZE] = {0};
-		setMessage(sentMessage, LIST_DEBUG, nullPayload);
-	}
-	else if (strcmp(inputs[0], "exit") == 0) {
-		char nullPayload[BUFSIZE] = {0};
-		setMessage(sentMessage, EXIT, nullPayload);
-	}
-	else if (strcmp(inputs[0], "find") == 0) {
-		char payload[BUFSIZE] = {0};
-		snprintf(payload, BUFSIZE, "%s", inputs[1]);
-		setMessage(sentMessage, REQ_USRLOC, payload);
-	}
-	else {
-		fputs("error: command not found\n", stdout);
-	}
+        setMessage(sentMessage, REQ_USRADD, payload);
+    }
+    else if (strcmp(inputs[0], "list") == 0) {
+        char nullPayload[BUFSIZE] = {0};
+        setMessage(sentMessage, LIST_DEBUG, nullPayload);
+    }
+    else if (strcmp(inputs[0], "exit") == 0) {
+        char nullPayload[BUFSIZE] = {0};
+        setMessage(sentMessage, EXIT, nullPayload);
+    }
+    else if (strcmp(inputs[0], "find") == 0) {
+        if (count < 2) {
+            *error = 1;
+            return;
+        }
+        char payload[BUFSIZE] = {0};
+        snprintf(payload, BUFSIZE, "%s", inputs[1]);
+        setMessage(sentMessage, REQ_USRLOC, payload);
+    }
+    else {
+        *error = 1;
+        fputs("error: command not found\n", stdout);
+    }
 }
 
 

@@ -62,6 +62,23 @@ typedef struct LocationServer{
     int userCount;
 } LocationServer;
 
+typedef struct {
+    int peerId;
+    int socket;
+    int isConnected;
+    int port;
+    UserServer userServer;
+    LocationServer locationServer;
+} PeerConnection;
+
+typedef struct {
+    int client_sock;
+    PeerConnection *peerConn;
+    UserServer *userServer;
+    LocationServer *locationServer;
+} ClientThreadParams;
+
+
 //============ FUNCOES DE REDE =====================
 void DieWithUserMessage(const char *msg, const char *detail);
 int initServerSockaddr(const char *proto, const char *portstr, struct sockaddr_storage *storage);
