@@ -15,10 +15,20 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // Parse location ID and validate
+    int locationId = atoi(argv[4]);
+    if (!validateLocationId(locationId)) {
+        printf("Invalid argument\n");
+        exit(EXIT_FAILURE);
+    }
+
     char *serverAddress = argv[1];
     char *userServerPort = argv[2];
     char *locationServerPort = argv[3];
-    char *locationCode = argv[4];
+
+    // Initialize client state
+    ClientState clientState;
+    initializeClient(&clientState, locationId);
 
     struct sockaddr_storage userServerStorage, locationServerStorage;
     int userSock = -1, locationSock = -1;
@@ -58,6 +68,21 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // Send initialization requests
+    Message initMessage;
+    char locPayload[BUFSIZE];
+    snprintf(locPayload, BUFSIZE, "%d", locationId);
+    setMessage(&initMessage, REQ_CONN, locPayload);
+
+    // Send connection request to both servers
+    if (send(userSock, &initMessage, sizeof(Message), 0) < 0 ||
+        send(locationSock, &initMessage, sizeof(Message), 0) < 0) {
+        perror("Failed to send initialization message");
+        close(userSock);
+        close(locationSock);
+        exit(EXIT_FAILURE);
+    }
+
     fd_set masterSet, workingSet;
     FD_ZERO(&masterSet);
     FD_SET(userSock, &masterSet);
@@ -76,7 +101,8 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        if (FD_ISSET(STDIN_FILENO, &workingSet)) {
+        // Only process stdin after initialization
+        if (clientState.isInitialized && FD_ISSET(STDIN_FILENO, &workingSet)) {
             char command[BUFSIZE];
             fgets(command, BUFSIZE - 1, stdin);
             command[strcspn(command, "\n")] = 0;
@@ -118,7 +144,11 @@ int main(int argc, char *argv[]) {
                 printf("User server disconnected\n");
                 break;
             }
-            handleReceivedData(&receivedMessage, userSock);
+            if (!clientState.isInitialized) {
+                handleConnectionResponse(&receivedMessage, &clientState, 0);
+            } else {
+                handleReceivedData(&receivedMessage, userSock);
+            }
         }
 
         if (FD_ISSET(locationSock, &workingSet)) {
@@ -127,7 +157,11 @@ int main(int argc, char *argv[]) {
                 printf("Location server disconnected\n");
                 break;
             }
-            handleReceivedData(&receivedMessage, locationSock);
+            if (!clientState.isInitialized) {
+                handleConnectionResponse(&receivedMessage, &clientState, 1);
+            } else {
+                handleReceivedData(&receivedMessage, locationSock);
+            }
         }
     }
 

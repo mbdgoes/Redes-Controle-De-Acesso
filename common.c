@@ -73,6 +73,36 @@ void setMessage(Message *message, int type, char* payload) {
     message->size = payloadLen;
 }
 
+void initializeClient(ClientState *state, int locationId) {
+    state->clientId = -1;
+    state->locationId = locationId;
+    state->isInitialized = 0;
+    state->hasUserServerId = 0;
+    state->hasLocServerId = 0;
+}
+
+int validateLocationId(int locationId) {
+    return (locationId >= 1 && locationId <= 10);
+}
+
+void handleConnectionResponse(Message *message, ClientState *state, int serverType) {
+    if (message->type == RES_CONN) {
+        int assignedId = atoi(message->payload);
+        if (serverType == 0) { // User Server
+            state->hasUserServerId = 1;
+            printf("SU New ID: %d\n", assignedId);
+        } else { // Location Server
+            state->hasLocServerId = 1;
+            printf("SL New ID: %d\n", assignedId);
+        }
+        
+        if (state->hasUserServerId && state->hasLocServerId) {
+            state->isInitialized = 1;
+            state->clientId = assignedId;
+        }
+    }
+}
+
 char* returnErrorMessage(Message *message){
 	if(strcmp(message->payload,"01")==0) return "Peer limit excedeed";
 	if(strcmp(message->payload,"02")==0) return "Peer not found";
@@ -193,80 +223,107 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
 
 // Computar resposta do user
 void computeCommand(UserServer *userServer, LocationServer *locationServer, Message *message, Message *receivedData) {
-	char responsePayload[BUFSIZE] = {0};
-	char userId[BUFSIZE] = {0};
-	
-	switch(receivedData->type){
-		case REQ_USRADD: 
+    char responsePayload[BUFSIZE] = {0};
+    char userId[BUFSIZE] = {0};
+    
+    switch(receivedData->type){
+        case REQ_CONN:
+            // Check if we can accept more clients (max 10)
+            if (userServer && userServer->clientCount >= 10) {
+                setMessage(message, ERROR, "09");  // Client limit exceeded
+                return;
+            }
+            if (locationServer && locationServer->clientCount >= 10) {
+                setMessage(message, ERROR, "09");  // Client limit exceeded
+                return;
+            }
+            
+            // Generate a client ID (for demonstration, using current count + 1)
+            int newClientId;
+            if (userServer) {
+                newClientId = userServer->clientCount + 1;
+                userServer->clientCount++;
+                printf("Client %d added (Loc %s)\n", newClientId, receivedData->payload);
+            } else if (locationServer) {
+                newClientId = locationServer->clientCount + 1;
+                locationServer->clientCount++;
+                printf("Client %d added (Loc %s)\n", newClientId, receivedData->payload);
+            }
+            
+            // Send back the client ID
+            snprintf(responsePayload, BUFSIZE, "%d", newClientId);
+            setMessage(message, RES_CONN, responsePayload);
+            break;
+
+        case REQ_USRADD: 
             int isSpecial = 0;
-
             sscanf(receivedData->payload, "%s %d", userId, &isSpecial);
-			addUser(userServer, message, userId, isSpecial);
-		break;
+            addUser(userServer, message, userId, isSpecial);
+            break;
 
-		case REQ_USRLOC:
-			sscanf(receivedData->payload, "%s", userId);
-			findUser(locationServer, message, userId);
-		break;
+        case REQ_USRLOC:
+            sscanf(receivedData->payload, "%s", userId);
+            findUser(locationServer, message, userId);
+            break;
 
-		case LIST_DEBUG:
-			int offset = 0;
+        case LIST_DEBUG:
+            int offset = 0;
+            for (int i = 0; i < userServer->userCount; i++) {
+                offset += snprintf(responsePayload + offset, BUFSIZE - offset, 
+                                "User %d: %s\n", i + 1, userServer->userDatabase[i]);
+                if (offset >= BUFSIZE) {
+                    break;
+                }
+            }
+            setMessage(message, LIST_DEBUG, responsePayload);
+            break;
 
-			// Concatena todos os usuários em 'responsePayload'
-			for (int i = 0; i < userServer->userCount; i++) {
-				offset += snprintf(responsePayload + offset, BUFSIZE - offset, 
-								"User %d: %s\n", i + 1, userServer->userDatabase[i]);
-				if (offset >= BUFSIZE) {
-					break;
-				}
-			}
-
-			// Preenche a mensagem de saída com os dados concatenados
-			setMessage(message, LIST_DEBUG, responsePayload);
-		break;
-
-		case EXIT:
-			puts("client disconnected\n");
-			char nullPayload[BUFSIZE] = {0};
-			setMessage(message, EXIT, nullPayload);
-		break;
-		
-		default:
-			puts("Command not found\n");
-		break;
-	}
+        case EXIT:
+            puts("client disconnected\n");
+            char nullPayload[BUFSIZE] = {0};
+            setMessage(message, EXIT, nullPayload);
+            break;
+        
+        default:
+            puts("Command not found\n");
+            break;
+    }
 }
 
 //Confere os dados recebidos e realiza acoes para o cliente
-void handleReceivedData(struct Message* receivedData, int sock){
-	switch(receivedData->type){
-		case REQ_USRADD:
-			puts(receivedData->payload); 
-		break;
+void handleReceivedData(struct Message* receivedData, int sock) {
+    switch(receivedData->type) {
+        case RES_CONN:
+            printf("New ID: %s\n", receivedData->payload);
+            break;
 
-		case RES_USRLOC:
-			puts(receivedData->payload);
-		break;
+        case REQ_USRADD:
+            puts(receivedData->payload); 
+            break;
 
-		case LIST_DEBUG:
-    		printf("Received User List:\n%s", receivedData->payload);
-    	break;
+        case RES_USRLOC:
+            puts(receivedData->payload);
+            break;
 
-		case ERROR:
-			puts(returnErrorMessage(receivedData));
-		break;
+        case LIST_DEBUG:
+            printf("Received User List:\n%s", receivedData->payload);
+            break;
 
-		case OK:
-			puts(returnOkMessage(receivedData));
-		break;
+        case ERROR:
+            puts(returnErrorMessage(receivedData));
+            break;
 
-		case EXIT:
-			close(sock);
-			exit(0);
-		break;
+        case OK:
+            puts(returnOkMessage(receivedData));
+            break;
 
-		default:
-			puts("Invalid received message type");
-		break;
-	}
+        case EXIT:
+            close(sock);
+            exit(0);
+            break;
+
+        default:
+            puts("Invalid received message type");
+            break;
+    }
 }

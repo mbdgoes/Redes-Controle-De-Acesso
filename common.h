@@ -50,16 +50,18 @@ typedef struct Message {
     char payload[BUFSIZE]; // Payload fixo (máximo de 500 bytes)
 } Message;
 
-typedef struct UserServer{
+typedef struct UserServer {
     char userDatabase[100][11];
     int specialPermissions[100];
     int userCount;
+    int clientCount;
 } UserServer;
 
-typedef struct LocationServer{
+typedef struct LocationServer {
     char locationUserDatabase[100][11];
     int lastLocationSeen[100];
     int userCount;
+    int clientCount;
 } LocationServer;
 
 typedef struct {
@@ -88,6 +90,14 @@ typedef struct {
     LocationServer *locationServer;
 } ClientThreadParams;
 
+typedef struct {
+    int clientId;
+    int locationId;
+    int isInitialized;     // Flag to track if client has received IDs from both servers
+    int hasUserServerId;   // Flag to track if received ID from user server
+    int hasLocServerId;    // Flag to track if received ID from location server
+} ClientState;
+
 
 //============ FUNCOES DE REDE =====================
 void DieWithUserMessage(const char *msg, const char *detail);
@@ -98,6 +108,9 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 void setMessage(Message *message, int type, char* payload);
 void addUser(UserServer *server, Message* message, char *userId, int isSpecial);
 void findUser(LocationServer *locationServer, Message *message, char* userId);
+void initializeClient(ClientState *state, int locationId);
+int validateLocationId(int locationId);
+void handleConnectionResponse(Message *message, ClientState *state, int serverType);
 char* returnErrorMessage(Message *message);
 char* returnOkMessage(Message *message);
 void computeInput(Message *sentMessage, char command[BUFSIZE], int* error);
