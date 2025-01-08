@@ -124,6 +124,13 @@ int main(int argc, char *argv[]) {
             } else if (sentMessage.type == LIST_DEBUG) {
                 targetSocket = userSock;
             }
+        
+            if (targetSocket != -1) {
+                if (send(targetSocket, &sentMessage, sizeof(Message), 0) < 0) {
+                    perror("Failed to send message");
+                    continue;
+                }
+            }
 
             // Replace this section with new code
         if (sentMessage.type == REQ_DISC) {

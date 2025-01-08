@@ -194,13 +194,15 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int c
         setMessage(sentMessage, REQ_DISC, payload);
     }
     else if (strcmp(inputs[0], "add") == 0) {
-        if (count < 3) {
+        if (count != 3 || strlen(inputs[1]) != 10 || 
+            (strcmp(inputs[2], "0") != 0 && strcmp(inputs[2], "1") != 0)) {
             *error = 1;
             return;
         }
-        char payload[BUFSIZE] = {0};
+        char payload[BUFSIZE];
         snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[2]);
         setMessage(sentMessage, REQ_USRADD, payload);
+        return;
     }
     else if (strcmp(inputs[0], "list") == 0) {
         char nullPayload[BUFSIZE] = {0};
@@ -260,11 +262,44 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             setMessage(message, RES_CONN, responsePayload);
             break;
 
-        case REQ_USRADD: 
-            int isSpecial = 0;
+        case REQ_USRADD: {
+            // Print debug message as required
+            printf("REQ_USRADD %s\n", receivedData->payload);
+            
+            char userId[11];
+            int isSpecial;
             sscanf(receivedData->payload, "%s %d", userId, &isSpecial);
-            addUser(userServer, message, userId, isSpecial);
+            
+            // Search for existing user
+            int userIndex = -1;
+            for(int i = 0; i < userServer->userCount; i++) {
+                if(strncmp(userServer->userDatabase[i], userId, 10) == 0) {
+                    userIndex = i;
+                    break;
+                }
+            }
+            
+            if (userIndex != -1) {
+                // Update existing user
+                userServer->specialPermissions[userIndex] = isSpecial;
+                char payload[BUFSIZE];
+                snprintf(payload, BUFSIZE, "03 %s", userId);
+                setMessage(message, OK, payload);
+            } else if (userServer->userCount >= MAX_USERS) {
+                // User limit exceeded
+                setMessage(message, ERROR, "17");
+            } else {
+                // Add new user
+                strncpy(userServer->userDatabase[userServer->userCount], userId, 10);
+                userServer->userDatabase[userServer->userCount][10] = '\0';
+                userServer->specialPermissions[userServer->userCount] = isSpecial;
+                userServer->userCount++;
+                char payload[BUFSIZE];
+                snprintf(payload, BUFSIZE, "02 %s", userId);
+                setMessage(message, OK, payload);
+            }
             break;
+        }
 
         case REQ_USRLOC:
             sscanf(receivedData->payload, "%s", userId);
@@ -321,11 +356,14 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
 //Confere os dados recebidos e realiza acoes para o cliente
 void handleReceivedData(struct Message* receivedData, int sock, int serverType) {
     switch(receivedData->type) {
+        static char lastUserId[11] = {0};
+
         case RES_CONN:
             printf("New ID: %s\n", receivedData->payload);
             break;
 
         case REQ_USRADD:
+            sscanf(receivedData->payload, "%s", lastUserId);
             puts(receivedData->payload); 
             break;
 
@@ -341,17 +379,26 @@ void handleReceivedData(struct Message* receivedData, int sock, int serverType) 
             puts(returnErrorMessage(receivedData));
             break;
 
-        case OK:
-            if (strcmp(receivedData->payload, "01") == 0) {
+        case OK: {
+            char code[3];
+            char userId[11];
+            sscanf(receivedData->payload, "%s %s", code, userId);
+            
+            if (strcmp(code, "02") == 0) {
+                printf("New user added: %s\n", userId);
+            } 
+            else if (strcmp(code, "03") == 0) {
+                printf("User updated: %s\n", userId);
+            } 
+            else if (strcmp(code, "01") == 0) {
                 if (serverType == 0) {
                     printf("SU Successful disconnect\n");
                 } else {
                     printf("SL Successful disconnect\n");
                 }
-            } else {
-                puts(returnOkMessage(receivedData));
             }
             break;
+        }
 
         case EXIT:
             close(sock);
