@@ -45,7 +45,8 @@ void *handle_peer_connection(void *arg) {
             }
 
             switch(receivedMsg.type) {
-                case REQ_CONNPEER: {
+                char response[BUFSIZE];
+                case REQ_CONNPEER:
                     // Generate a random PID for ourselves
                     peerConn->myId = rand() % 1000;
                     char pidStr[10];
@@ -55,10 +56,9 @@ void *handle_peer_connection(void *arg) {
                     send(peerConn->socket, &sendMsg, sizeof(Message), 0);
                     
                     printf("Peer %d connected\n", peerConn->myId);
-                    break;
-                }
+                break;
                 
-                case RES_CONNPEER: {
+                case RES_CONNPEER:
                     // Store their ID and print it
                     peerConn->theirId = atoi(receivedMsg.payload);
                     printf("New Peer ID: %d\n", peerConn->theirId);
@@ -75,10 +75,9 @@ void *handle_peer_connection(void *arg) {
                         printf("Peer %d connected\n", peerConn->myId);
                         peerConn->hasExchangedIds = 1;
                     }
-                    break;
-                }
+                break;
 
-                 case REQ_DISCPEER: {
+                case REQ_DISCPEER:
                     int requestingPeerId = atoi(receivedMsg.payload);
                     
                     if (requestingPeerId != peerConn->theirId) {
@@ -96,8 +95,7 @@ void *handle_peer_connection(void *arg) {
                         printf("No peer found, starting to listen...\n");
                         return NULL;
                     }
-                    break;
-                }
+                break;
                 
                 case ERROR: {
                     if (strcmp(receivedMsg.payload, "01") == 0) {
@@ -113,12 +111,10 @@ void *handle_peer_connection(void *arg) {
                 }
                 
                 case REQ_LOCREG:
-                    // Print debug message as required in spec
                     char uid[11], locId[10];
                     sscanf(receivedMsg.payload, "%s %s", uid, locId);
                     printf("REQ_LOCREG %s %s\n", uid, locId);
 
-                    // Handle location registration
                     LocationServer *locServer = &peerConn->locationServer;
                     int loc = atoi(locId);
                     int oldLoc = -1;
@@ -135,21 +131,21 @@ void *handle_peer_connection(void *arg) {
                     }
 
                     // If user not found, add them
-                    if(!userFound && locServer->userCount < MAX_USERS) {
+                    if(!userFound) {
                         strncpy(locServer->locationUserDatabase[locServer->userCount], uid, 10);
+                        locServer->locationUserDatabase[locServer->userCount][10] = '\0';
                         locServer->lastLocationSeen[locServer->userCount] = loc;
                         locServer->userCount++;
+                        oldLoc = -1;
                     }
 
                     // Send response with old location
-                    char response[BUFSIZE];
-                    Message responseMsg;
                     snprintf(response, BUFSIZE, "%d", oldLoc);
-                    setMessage(&responseMsg, RES_LOCREG, response);
-                    send(peerConn->socket, &responseMsg, sizeof(Message), 0);
-                    break;
-
-                 case REQ_USRAUTH:
+                    setMessage(&sendMsg, RES_LOCREG, response);
+                    send(peerConn->socket, &sendMsg, sizeof(Message), 0);
+                break;
+                
+                case REQ_USRAUTH:
                     // Print debug message as required in spec
                     printf("REQ_USRAUTH %s\n", receivedMsg.payload);
 
@@ -166,21 +162,20 @@ void *handle_peer_connection(void *arg) {
                     }
 
                     // Send response with permission status
-                    response[BUFSIZE];
+                    Message responseMsg;
                     snprintf(response, BUFSIZE, "%d", isSpecial);
                     setMessage(&responseMsg, RES_USRAUTH, response);
                     send(peerConn->socket, &responseMsg, sizeof(Message), 0);
-                    break;
+                break;
                 
-                case OK: {
+                case OK:
                     if (strcmp(receivedMsg.payload, "01") == 0) {
                         printf("%s\n", returnOkMessage(&receivedMsg));
                         printf("Peer %d disconnected\n", peerConn->theirId);
                         close(peerConn->socket);
                         exit(1);
                     }
-                    break;
-                }
+                break;
 
                 default:
                     // Handle other message types if needed
@@ -237,20 +232,42 @@ void *handle_client(void *arg) {
             break;
         }
 
+        printf("DEBUG: Client thread received message type: %d\n", receivedMsg.type);
+
+        // For REQ_USRACCESS messages, modify payload to include locationId
+        if (receivedMsg.type == REQ_USRACCESS) {
+            char userId[11], direction[4];
+            char newPayload[BUFSIZE];
+            sscanf(receivedMsg.payload, "%s %s", userId, direction);
+            
+            // Add locationId to the payload: format is now "userId direction locationId"
+            snprintf(newPayload, BUFSIZE, "%s %s %d", userId, direction, params->locationId);
+            strcpy(receivedMsg.payload, newPayload);
+        }
+
         // Process client command
         computeCommand(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
+        
+        // If it's an access request and not an error, forward to peer
+        if (receivedMsg.type == REQ_USRACCESS && responseMsg.type != ERROR) {
+            if (params->peerConn->isConnected) {
+                // Forward the REQ_LOCREG to location server
+                send(params->peerConn->socket, &responseMsg, sizeof(Message), 0);
+                
+                // Wait for response from location server
+                Message locResponse;
+                recv(params->peerConn->socket, &locResponse, sizeof(Message), 0);
+                
+                // Convert to RES_USRACCESS and send to client
+                setMessage(&responseMsg, RES_USRACCESS, locResponse.payload);
+            }
+        }
         
         // Send response to client
         send(params->client_sock, &responseMsg, sizeof(Message), 0);
 
-        // Forward to peer if connected
-        if (params->peerConn->isConnected) {
-            send(params->peerConn->socket, &receivedMsg, sizeof(Message), 0);
-        }
-
         if (receivedMsg.type == EXIT || receivedMsg.type == REQ_DISC) {
             if (receivedMsg.type == REQ_DISC) {
-                // Wait for response to be sent before closing
                 usleep(100000);  // Small delay to ensure response is sent
             }
             break;
@@ -428,11 +445,31 @@ int main(int argc, char *argv[]) {
             if (client_sock >= 0) {
                 printf("New client connected\n");
                 
+                // Receive initial connection message
+                Message initMsg;
+                if (recv(client_sock, &initMsg, sizeof(Message), 0) <= 0) {
+                    printf("Error receiving initial message\n");
+                    close(client_sock);
+                    continue;
+                }
+
+                // Extract location ID from initial message
+                int locationId = -1;
+                if (initMsg.type == REQ_CONN) {
+                    locationId = atoi(initMsg.payload);
+                }
+                
                 ClientThreadParams *params = malloc(sizeof(ClientThreadParams));
                 params->client_sock = client_sock;
                 params->peerConn = &peerConn;
                 params->userServer = &userServer;
                 params->locationServer = &locationServer;
+                params->locationId = locationId;  // Store the location ID
+
+                // Process the initial connection message
+                Message responseMsg;
+                computeCommand(params->userServer, params->locationServer, &responseMsg, &initMsg);
+                send(client_sock, &responseMsg, sizeof(Message), 0);
 
                 pthread_t client_thread;
                 if (pthread_create(&client_thread, NULL, handle_client, params) != 0) {

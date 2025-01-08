@@ -88,6 +88,7 @@ typedef struct {
     PeerConnection *peerConn;
     UserServer *userServer;
     LocationServer *locationServer;
+    int locationId;
 } ClientThreadParams;
 
 typedef struct {

@@ -209,6 +209,15 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int c
         setMessage(sentMessage, REQ_USRADD, payload);
         return;
     }
+    else if (strcmp(inputs[0], "in") == 0 || strcmp(inputs[0], "out") == 0) {
+        if (count != 2 || strlen(inputs[1]) != 10) {
+            *error = 1;
+            return;
+        }
+        char payload[BUFSIZE];
+        snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[0]);
+        setMessage(sentMessage, REQ_USRACCESS, payload);
+    }
     else if (strcmp(inputs[0], "list") == 0) {
         char nullPayload[BUFSIZE] = {0};
         setMessage(sentMessage, LIST_DEBUG, nullPayload);
@@ -234,7 +243,7 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int c
 // Computar resposta do user
 void computeCommand(UserServer *userServer, LocationServer *locationServer, Message *message, Message *receivedData) {
     char responsePayload[BUFSIZE] = {0};
-    char userId[BUFSIZE] = {0};
+    char userId[11] = {0};
     
     switch(receivedData->type){
         case REQ_CONN:
@@ -263,9 +272,9 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             // Send back the client ID
             snprintf(responsePayload, BUFSIZE, "%d", newClientId);
             setMessage(message, RES_CONN, responsePayload);
-            break;
+        break;
 
-        case REQ_USRADD: {
+        case REQ_USRADD:
             // Print debug message as required
             printf("REQ_USRADD %s\n", receivedData->payload);
             
@@ -301,13 +310,86 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
                 snprintf(payload, BUFSIZE, "02 %s", userId);
                 setMessage(message, OK, payload);
             }
-            break;
+        break;
+
+        case REQ_USRACCESS:{
+            char userId[11], direction[4];
+            int locationId;
+            sscanf(receivedData->payload, "%s %s %d", userId, direction, &locationId);
+            
+            printf("REQ_USRACCESS %s %s\n", userId, direction);
+            
+            // Check if user exists
+            int userFound = 0;
+            for(int i = 0; i < userServer->userCount; i++) {
+                if(strncmp(userServer->userDatabase[i], userId, 10) == 0) {
+                    userFound = 1;
+                    break;
+                }
+            }
+            
+            if(!userFound) {
+                setMessage(message, ERROR, "18");
+                return;
+            }
+            
+            // Create payload for location server
+            char locRegPayload[BUFSIZE];
+            if (strcmp(direction, "out") == 0) {
+                snprintf(locRegPayload, BUFSIZE, "%s %d", userId, -1);
+            } else {
+                snprintf(locRegPayload, BUFSIZE, "%s %d", userId, locationId);
+            }
+            
+            setMessage(message, REQ_LOCREG, locRegPayload);
         }
+        break;
+
+        case REQ_LOCREG:{
+            char userId[11];
+            int newLoc;
+            sscanf(receivedData->payload, "%s %d", userId, &newLoc);
+            printf("REQ_LOCREG %s %d\n", userId, newLoc);
+
+            // Find if user exists in location database
+            int userIndex = -1;
+            int oldLoc = -1;
+            
+            for(int i = 0; i < locationServer->userCount; i++) {
+                if(strncmp(locationServer->locationUserDatabase[i], userId, 10) == 0) {
+                    userIndex = i;
+                    oldLoc = locationServer->lastLocationSeen[i];
+                    locationServer->lastLocationSeen[i] = newLoc;  // Update to new location
+                    break;
+                }
+            }
+
+            // If user not found, add them
+            if(userIndex == -1) {
+                userIndex = locationServer->userCount;
+                strncpy(locationServer->locationUserDatabase[userIndex], userId, 10);
+                locationServer->locationUserDatabase[userIndex][10] = '\0';
+                oldLoc = -1;  // First time seeing this user
+                locationServer->lastLocationSeen[userIndex] = newLoc;
+                locationServer->userCount++;
+            }
+
+            // Send response with old location
+            char responsePayload[BUFSIZE];
+            snprintf(responsePayload, BUFSIZE, "%d", oldLoc);
+            setMessage(message, RES_LOCREG, responsePayload);
+            printf("DEBUG: Sending RES_LOCREG with old location: %d\n", oldLoc);
+        }
+        break;
+
+        case RES_LOCREG:
+            setMessage(message, RES_USRACCESS, receivedData->payload);
+        break;
 
         case REQ_USRLOC:
             sscanf(receivedData->payload, "%s", userId);
             findUser(locationServer, message, userId);
-            break;
+        break;
 
         case LIST_DEBUG:
             int offset = 0;
@@ -319,9 +401,9 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
                 }
             }
             setMessage(message, LIST_DEBUG, responsePayload);
-            break;
+        break;
 		
-		case REQ_DISC: {
+		case REQ_DISC:
             int clientId = atoi(receivedData->payload);
             int clientFound = 0;
             
@@ -341,18 +423,17 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             if (!clientFound) {
                 setMessage(message, ERROR, "10");
             }
-            break;
-        }
+        break;
 
         case EXIT:
             puts("client disconnected\n");
             char nullPayload[BUFSIZE] = {0};
             setMessage(message, EXIT, nullPayload);
-            break;
+        break;
         
         default:
             puts("Command not found\n");
-            break;
+        break;
     }
 }
 
@@ -368,7 +449,12 @@ void handleReceivedData(struct Message* receivedData, int sock, int serverType) 
         case REQ_USRADD:
             sscanf(receivedData->payload, "%s", lastUserId);
             puts(receivedData->payload); 
-            break;
+        break;
+
+        case RES_USRACCESS:
+            int lastLoc = atoi(receivedData->payload);
+            printf("Ok. Last location: %d\n", lastLoc);
+        break;
 
         case RES_USRLOC:
             printf("Current location: %s\n", receivedData->payload);
