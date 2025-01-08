@@ -148,24 +148,29 @@ void addUser(UserServer *server, Message* message, char *userId, int isSpecial){
 	}
 }
 
-void findUser(LocationServer *server, Message *message, char* userId){
-	int userIndex = -1;
-	char payload[BUFSIZE];
+void findUser(LocationServer *server, Message *message, char* userId) {
+    int userIndex = -1;
+    char payload[BUFSIZE];
 
-	for(int i = 0; i < server->userCount; i++){
-		if(strncmp(server->locationUserDatabase[i], userId, 10) == 0){
-			userIndex = i;
-			break;
-		}
-	}
+    // Print debug message as required by spec
+    printf("REQ_USRLOC %s\n", userId);
 
-	if(userIndex == -1){
-		setMessage(message,ERROR,"18");
-		return;
-	}
+    // Search for user in the database
+    for(int i = 0; i < server->userCount; i++) {
+        if(strncmp(server->locationUserDatabase[i], userId, 10) == 0) {
+            userIndex = i;
+            break;
+        }
+    }
 
-	snprintf(payload, BUFSIZE, "Current location: %s", server->locationUserDatabase[userIndex]);
-	setMessage(message, RES_USRLOC, payload);
+    if(userIndex == -1) {
+        setMessage(message, ERROR, "18");
+        return;
+    }
+
+    // User found - format location response
+    snprintf(payload, BUFSIZE, "%d", server->lastLocationSeen[userIndex]);
+    setMessage(message, RES_USRLOC, payload);
 }
 
 //Faz o parsing do input do cliente
@@ -217,9 +222,7 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int c
             *error = 1;
             return;
         }
-        char payload[BUFSIZE] = {0};
-        snprintf(payload, BUFSIZE, "%s", inputs[1]);
-        setMessage(sentMessage, REQ_USRLOC, payload);
+        setMessage(sentMessage, REQ_USRLOC, inputs[1]);
     }
     else {
         *error = 1;
@@ -368,8 +371,8 @@ void handleReceivedData(struct Message* receivedData, int sock, int serverType) 
             break;
 
         case RES_USRLOC:
-            puts(receivedData->payload);
-            break;
+            printf("Current location: %s\n", receivedData->payload);
+        break;
 
         case LIST_DEBUG:
             printf("Received User List:\n%s", receivedData->payload);
