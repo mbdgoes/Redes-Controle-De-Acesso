@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
 
             int error = 0;
             memset(&sentMessage, 0, sizeof(Message));  // Clear the message structure
-            computeInput(&sentMessage, command, &error);
+            computeInput(&sentMessage, command, &error, clientState.clientId);
 
             if (error) {
                 printf("Error processing command\n");
@@ -125,15 +125,30 @@ int main(int argc, char *argv[]) {
                 targetSocket = userSock;
             }
 
-            if (targetSocket != -1) {
-                if (send(targetSocket, &sentMessage, sizeof(Message), 0) < 0) {
-                    perror("send failed");
-                    break;
-                }
+            // Replace this section with new code
+        if (sentMessage.type == REQ_DISC) {
+            if (send(userSock, &sentMessage, sizeof(Message), 0) < 0 ||
+                send(locationSock, &sentMessage, sizeof(Message), 0) < 0) {
+                perror("Failed to send disconnect request");
+                break;
             }
 
-            if (sentMessage.type == EXIT) {
-                printf("DEBUG: Exiting client...\n");
+            // Wait for responses from both servers
+            Message userResponse, locResponse;
+            recv(userSock, &userResponse, sizeof(Message), 0);
+            recv(locationSock, &locResponse, sizeof(Message), 0);
+
+            // Handle responses
+            handleReceivedData(&userResponse, userSock, 0);
+            handleReceivedData(&locResponse, locationSock, 1);
+            
+            // Now we can close the connections and exit
+            close(userSock);
+            close(locationSock);
+            exit(0);
+        }
+
+            if (sentMessage.type == EXIT || sentMessage.type == REQ_DISC) {
                 break;
             }
         }
@@ -147,7 +162,7 @@ int main(int argc, char *argv[]) {
             if (!clientState.isInitialized) {
                 handleConnectionResponse(&receivedMessage, &clientState, 0);
             } else {
-                handleReceivedData(&receivedMessage, userSock);
+                handleReceivedData(&receivedMessage, userSock, 0);
             }
         }
 
@@ -160,7 +175,7 @@ int main(int argc, char *argv[]) {
             if (!clientState.isInitialized) {
                 handleConnectionResponse(&receivedMessage, &clientState, 1);
             } else {
-                handleReceivedData(&receivedMessage, locationSock);
+                handleReceivedData(&receivedMessage, locationSock, 1);
             }
         }
     }

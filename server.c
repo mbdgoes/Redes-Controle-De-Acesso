@@ -248,7 +248,11 @@ void *handle_client(void *arg) {
             send(params->peerConn->socket, &receivedMsg, sizeof(Message), 0);
         }
 
-        if (receivedMsg.type == EXIT) {
+        if (receivedMsg.type == EXIT || receivedMsg.type == REQ_DISC) {
+            if (receivedMsg.type == REQ_DISC) {
+                // Wait for response to be sent before closing
+                usleep(100000);  // Small delay to ensure response is sent
+            }
             break;
         }
     }

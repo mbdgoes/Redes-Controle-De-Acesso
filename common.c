@@ -169,7 +169,7 @@ void findUser(LocationServer *server, Message *message, char* userId){
 }
 
 //Faz o parsing do input do cliente
-void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
+void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int clientId) {
     char *inputs[BUFSIZE];
     char *token = strtok(command, " ");
     int count = 0;
@@ -188,7 +188,12 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error) {
 
     memset(sentMessage, 0, sizeof(Message));  // Clear the message structure
 
-    if (strcmp(inputs[0], "add") == 0) {
+    if (strcmp(inputs[0], "kill") == 0) {
+        char payload[BUFSIZE];
+        snprintf(payload, BUFSIZE, "%d", clientId);
+        setMessage(sentMessage, REQ_DISC, payload);
+    }
+    else if (strcmp(inputs[0], "add") == 0) {
         if (count < 3) {
             *error = 1;
             return;
@@ -277,6 +282,29 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             }
             setMessage(message, LIST_DEBUG, responsePayload);
             break;
+		
+		case REQ_DISC: {
+            int clientId = atoi(receivedData->payload);
+            int clientFound = 0;
+            
+            // Check if client exists in server's database
+            if (userServer && clientId <= userServer->clientCount) {
+                clientFound = 1;
+                userServer->clientCount--;
+                printf("Client %d removed\n", clientId);
+                setMessage(message, OK, "01");
+            } else if (locationServer && clientId <= locationServer->clientCount) {
+                clientFound = 1;
+                locationServer->clientCount--;
+                printf("Client %d removed\n", clientId);
+                setMessage(message, OK, "01");
+            }
+
+            if (!clientFound) {
+                setMessage(message, ERROR, "10");
+            }
+            break;
+        }
 
         case EXIT:
             puts("client disconnected\n");
@@ -291,7 +319,7 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
 }
 
 //Confere os dados recebidos e realiza acoes para o cliente
-void handleReceivedData(struct Message* receivedData, int sock) {
+void handleReceivedData(struct Message* receivedData, int sock, int serverType) {
     switch(receivedData->type) {
         case RES_CONN:
             printf("New ID: %s\n", receivedData->payload);
@@ -314,7 +342,15 @@ void handleReceivedData(struct Message* receivedData, int sock) {
             break;
 
         case OK:
-            puts(returnOkMessage(receivedData));
+            if (strcmp(receivedData->payload, "01") == 0) {
+                if (serverType == 0) {
+                    printf("SU Successful disconnect\n");
+                } else {
+                    printf("SL Successful disconnect\n");
+                }
+            } else {
+                puts(returnOkMessage(receivedData));
+            }
             break;
 
         case EXIT:

@@ -113,8 +113,8 @@ int validateLocationId(int locationId);
 void handleConnectionResponse(Message *message, ClientState *state, int serverType);
 char* returnErrorMessage(Message *message);
 char* returnOkMessage(Message *message);
-void computeInput(Message *sentMessage, char command[BUFSIZE], int* error);
+void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int clientId);
 void computeCommand(UserServer *userServer, LocationServer *LocationServer, Message *action, Message *receivedData);
-void handleReceivedData(struct Message* receivedData, int sock);
+void handleReceivedData(struct Message* receivedData, int sock, int serverType);
 
 #endif
