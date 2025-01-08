@@ -14,9 +14,6 @@
 
 #include "common.h"
 
-#define MSG_TEST 100
-#define MSG_TEST_RESPONSE 101
-
 void *handle_peer_connection(void *arg) {
     PeerConnection *peerConn = (PeerConnection *)arg;
     Message receivedMsg, sendMsg;
@@ -49,7 +46,7 @@ void *handle_peer_connection(void *arg) {
 
             switch(receivedMsg.type) {
                 case REQ_CONNPEER: {
-                    // Generate a random PID for the connecting peer
+                    // Generate a random PID for ourselves
                     peerConn->myId = rand() % 1000;
                     char pidStr[10];
                     snprintf(pidStr, sizeof(pidStr), "%d", peerConn->myId);
@@ -63,8 +60,8 @@ void *handle_peer_connection(void *arg) {
                 
                 case RES_CONNPEER: {
                     // Store their ID and print it
-                    int theirId = atoi(receivedMsg.payload);
-                    printf("New Peer ID: %d\n", theirId);
+                    peerConn->theirId = atoi(receivedMsg.payload);
+                    printf("New Peer ID: %d\n", peerConn->theirId);
                     
                     // If we haven't sent our ID yet and we're the initiator
                     if (peerConn->isInitiator && !peerConn->hasExchangedIds) {
@@ -80,6 +77,27 @@ void *handle_peer_connection(void *arg) {
                     }
                     break;
                 }
+
+                 case REQ_DISCPEER: {
+                    int requestingPeerId = atoi(receivedMsg.payload);
+                    
+                    if (requestingPeerId != peerConn->theirId) {
+                        setMessage(&sendMsg, ERROR, "02");
+                        send(peerConn->socket, &sendMsg, sizeof(Message), 0);
+                    } else {
+                        // Valid peer ID
+                        setMessage(&sendMsg, OK, "01");
+                        send(peerConn->socket, &sendMsg, sizeof(Message), 0);
+                        printf("Peer %d disconnected\n", requestingPeerId);
+                        
+                        // Close connection and start listening
+                        peerConn->isConnected = 0;
+                        close(peerConn->socket);
+                        printf("No peer found, starting to listen...\n");
+                        return NULL;
+                    }
+                    break;
+                }
                 
                 case ERROR: {
                     if (strcmp(receivedMsg.payload, "01") == 0) {
@@ -87,6 +105,10 @@ void *handle_peer_connection(void *arg) {
                         close(peerConn->socket);
                         return NULL;
                     }
+                    if (strcmp(receivedMsg.payload, "02") == 0) {
+                        printf("%s\n", returnErrorMessage(&receivedMsg));
+                    }
+                    break;
                     break;
                 }
                 
@@ -149,16 +171,16 @@ void *handle_peer_connection(void *arg) {
                     setMessage(&responseMsg, RES_USRAUTH, response);
                     send(peerConn->socket, &responseMsg, sizeof(Message), 0);
                     break;
-
-                case MSG_TEST:
-                    printf("Received test message, sending response...\n");
-                    setMessage(&responseMsg, MSG_TEST_RESPONSE, "testing");
-                    send(peerConn->socket, &responseMsg, sizeof(Message), 0);
+                
+                case OK: {
+                    if (strcmp(receivedMsg.payload, "01") == 0) {
+                        printf("%s\n", returnOkMessage(&receivedMsg));
+                        printf("Peer %d disconnected\n", peerConn->theirId);
+                        close(peerConn->socket);
+                        exit(1);
+                    }
                     break;
-
-                case MSG_TEST_RESPONSE:
-                    printf("Test response received: %s\n", receivedMsg.payload);
-                    break;
+                }
 
                 default:
                     // Handle other message types if needed
@@ -171,19 +193,34 @@ void *handle_peer_connection(void *arg) {
 void *handle_stdin(void *arg) {
     PeerConnection *peerConn = (PeerConnection *)arg;
     char input[BUFSIZE];
-    Message testMsg;
+    Message sendMsg;
 
     while (1) {
-        fgets(input, BUFSIZE - 1, stdin);
+        if (fgets(input, BUFSIZE - 1, stdin) == NULL) {
+            continue;
+        }
         input[strcspn(input, "\n")] = 0;
 
-        if (strcmp(input, "test") == 0 && peerConn->isConnected) {
-            setMessage(&testMsg, MSG_TEST, "test");
-            send(peerConn->socket, &testMsg, sizeof(Message), 0);
-            printf("Test message sent to peer\n");
-        }
-        else if (strcmp(input, "exit") == 0) {
-            break;
+        if (strcmp(input, "kill") == 0) {
+            if (peerConn->isConnected) {
+                char pidStr[10];
+                snprintf(pidStr, sizeof(pidStr), "%d", peerConn->myId);
+                setMessage(&sendMsg, REQ_DISCPEER, pidStr);
+                send(peerConn->socket, &sendMsg, sizeof(Message), 0);
+                
+                // Wait for response
+                Message recvMsg;
+                recv(peerConn->socket, &recvMsg, sizeof(Message), 0);
+                
+                if (recvMsg.type == OK && strcmp(recvMsg.payload, "01") == 0) {
+                    printf("%s\n", returnOkMessage(&recvMsg));
+                    printf("Peer %d disconnected\n", peerConn->theirId);
+                    close(peerConn->socket);
+                    exit(0);  // Exit immediately after successful disconnection
+                } else if (recvMsg.type == ERROR) {
+                    printf("%s\n", returnErrorMessage(&recvMsg));
+                }
+            }
         }
     }
     return NULL;
@@ -269,30 +306,35 @@ int main(int argc, char *argv[]) {
         .isInitiator = 0,
         .hasExchangedIds = 0,
         .myId = -1,
-        .theirId = -1
+        .theirId = -1,
+        .userServer = {.userCount = 0},
+        .locationServer = {.userCount = 0}
     };
 
     // Try to establish peer connection first
     int peer_sock = establish_peer_connection("127.0.0.1", peer_port, &peerConn);
     
+    // Create peer server socket
+    int peer_server_sock = -1;
+    
     if (peer_sock < 0) {
         printf("No peer found, starting to listen...\n");
         
         // Set up listening socket for peer connections
-        int server_sock = socket(AF_INET, SOCK_STREAM, 0);
+        peer_server_sock = socket(AF_INET, SOCK_STREAM, 0);
         struct sockaddr_in server_addr = {
             .sin_family = AF_INET,
             .sin_port = htons(peer_port),
             .sin_addr.s_addr = INADDR_ANY
         };
 
-        bind(server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
-        listen(server_sock, 1);
+        bind(peer_server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
+        listen(peer_server_sock, 1);
 
-        // Accept peer connection
+        // Accept initial peer connection
         struct sockaddr_in peer_addr;
         socklen_t addr_len = sizeof(peer_addr);
-        peerConn.socket = accept(server_sock, (struct sockaddr*)&peer_addr, &addr_len);
+        peerConn.socket = accept(peer_server_sock, (struct sockaddr*)&peer_addr, &addr_len);
         if (peerConn.socket >= 0) {
             peerConn.isConnected = 1;
             peerConn.isInitiator = 0;
@@ -301,7 +343,6 @@ int main(int argc, char *argv[]) {
             pthread_create(&peer_thread, NULL, handle_peer_connection, &peerConn);
             pthread_detach(peer_thread);
         }
-        close(server_sock);
     } else {
         peerConn.isConnected = 1;
         peerConn.isInitiator = 1;
@@ -312,19 +353,19 @@ int main(int argc, char *argv[]) {
     }
 
     // Set up client server socket
-    int server_sock = socket(AF_INET, SOCK_STREAM, 0);
+    int client_server_sock = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in server_addr = {
         .sin_family = AF_INET,
         .sin_port = htons(client_port),
         .sin_addr.s_addr = INADDR_ANY
     };
 
-    if (bind(server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+    if (bind(client_server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         perror("Bind failed");
         exit(EXIT_FAILURE);
     }
 
-    if (listen(server_sock, 10) < 0) {
+    if (listen(client_server_sock, 10) < 0) {
         perror("Listen failed");
         exit(EXIT_FAILURE);
     }
@@ -336,37 +377,79 @@ int main(int argc, char *argv[]) {
     pthread_create(&stdin_thread, NULL, handle_stdin, &peerConn);
     pthread_detach(stdin_thread);
 
-    // Handle client connections in main thread
-    while (1) {
-        struct sockaddr_in client_addr;
-        socklen_t addr_len = sizeof(client_addr);
-        int client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &addr_len);
-        
-        if (client_sock >= 0) {
-            printf("New client connected\n");
-            
-            ClientThreadParams *params = malloc(sizeof(ClientThreadParams));
-            params->client_sock = client_sock;
-            params->peerConn = &peerConn;
-            params->userServer = &userServer;
-            params->locationServer = &locationServer;
+    // Set up fd_set for multiple socket handling
+    fd_set master_fds;
+    FD_ZERO(&master_fds);
+    FD_SET(client_server_sock, &master_fds);
+    int maxfd = client_server_sock;
+    
+    if (peer_server_sock != -1) {
+        FD_SET(peer_server_sock, &master_fds);
+        maxfd = (peer_server_sock > maxfd) ? peer_server_sock : maxfd;
+    }
 
-            pthread_t client_thread;
-            if (pthread_create(&client_thread, NULL, handle_client, params) != 0) {
-                perror("Failed to create client thread");
-                free(params);
-                close(client_sock);
-            } else {
-                pthread_detach(client_thread);
+    // Handle connections in main thread
+    while (1) {
+        fd_set read_fds = master_fds;
+        if (select(maxfd + 1, &read_fds, NULL, NULL, NULL) < 0) {
+            perror("select");
+            continue;
+        }
+
+        // Check for peer connections
+        if (peer_server_sock != -1 && FD_ISSET(peer_server_sock, &read_fds)) {
+            struct sockaddr_in peer_addr;
+            socklen_t addr_len = sizeof(peer_addr);
+            
+            if (!peerConn.isConnected) {
+                peerConn.socket = accept(peer_server_sock, (struct sockaddr*)&peer_addr, &addr_len);
+                if (peerConn.socket >= 0) {
+                    peerConn.isConnected = 1;
+                    peerConn.isInitiator = 0;
+                    peerConn.hasExchangedIds = 0;
+                    
+                    pthread_t peer_thread;
+                    pthread_create(&peer_thread, NULL, handle_peer_connection, &peerConn);
+                    pthread_detach(peer_thread);
+                }
+            }
+        }
+
+        // Check for client connections
+        if (FD_ISSET(client_server_sock, &read_fds)) {
+            struct sockaddr_in client_addr;
+            socklen_t addr_len = sizeof(client_addr);
+            int client_sock = accept(client_server_sock, (struct sockaddr*)&client_addr, &addr_len);
+            
+            if (client_sock >= 0) {
+                printf("New client connected\n");
+                
+                ClientThreadParams *params = malloc(sizeof(ClientThreadParams));
+                params->client_sock = client_sock;
+                params->peerConn = &peerConn;
+                params->userServer = &userServer;
+                params->locationServer = &locationServer;
+
+                pthread_t client_thread;
+                if (pthread_create(&client_thread, NULL, handle_client, params) != 0) {
+                    perror("Failed to create client thread");
+                    free(params);
+                    close(client_sock);
+                } else {
+                    pthread_detach(client_thread);
+                }
             }
         }
     }
 
-    // Cleanup (this part will not be reached in the current implementation)
+    // Cleanup
     if (peerConn.isConnected) {
         close(peerConn.socket);
     }
-    close(server_sock);
+    if (peer_server_sock != -1) {
+        close(peer_server_sock);
+    }
+    close(client_server_sock);
 
     return 0;
 }
