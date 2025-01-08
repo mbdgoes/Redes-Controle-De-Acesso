@@ -19,15 +19,20 @@
 
 void *handle_peer_connection(void *arg) {
     PeerConnection *peerConn = (PeerConnection *)arg;
-    Message receivedMsg, responseMsg;
+    Message receivedMsg, sendMsg;
     fd_set current_sockets, ready_sockets;
     
     FD_ZERO(&current_sockets);
     FD_SET(peerConn->socket, &current_sockets);
 
+    // If this is the connecting server (active side), send initial REQ_CONNPEER
+    if (peerConn->isInitiator) {
+        setMessage(&sendMsg, REQ_CONNPEER, "");
+        send(peerConn->socket, &sendMsg, sizeof(Message), 0);
+    }
+
     while (1) {
         ready_sockets = current_sockets;
-        
         if (select(FD_SETSIZE, &ready_sockets, NULL, NULL, NULL) < 0) {
             perror("select error");
             break;
@@ -43,18 +48,47 @@ void *handle_peer_connection(void *arg) {
             }
 
             switch(receivedMsg.type) {
-                case REQ_CONNPEER:
-                    peerConn->peerId = rand() % 1000;
+                case REQ_CONNPEER: {
+                    // Generate a random PID for the connecting peer
+                    peerConn->myId = rand() % 1000;
                     char pidStr[10];
-                    snprintf(pidStr, sizeof(pidStr), "%d", peerConn->peerId);
-                    setMessage(&responseMsg, RES_CONNPEER, pidStr);
-                    send(peerConn->socket, &responseMsg, sizeof(Message), 0);
-                    printf("Peer %d connected\n", peerConn->peerId);
+                    snprintf(pidStr, sizeof(pidStr), "%d", peerConn->myId);
+                    
+                    setMessage(&sendMsg, RES_CONNPEER, pidStr);
+                    send(peerConn->socket, &sendMsg, sizeof(Message), 0);
+                    
+                    printf("Peer %d connected\n", peerConn->myId);
                     break;
-
-                case RES_CONNPEER:
-                    printf("New Peer ID: %s\n", receivedMsg.payload);
+                }
+                
+                case RES_CONNPEER: {
+                    // Store their ID and print it
+                    int theirId = atoi(receivedMsg.payload);
+                    printf("New Peer ID: %d\n", theirId);
+                    
+                    // If we haven't sent our ID yet and we're the initiator
+                    if (peerConn->isInitiator && !peerConn->hasExchangedIds) {
+                        peerConn->myId = rand() % 1000;
+                        char myPidStr[10];
+                        snprintf(myPidStr, sizeof(myPidStr), "%d", peerConn->myId);
+                        
+                        setMessage(&sendMsg, RES_CONNPEER, myPidStr);
+                        send(peerConn->socket, &sendMsg, sizeof(Message), 0);
+                        
+                        printf("Peer %d connected\n", peerConn->myId);
+                        peerConn->hasExchangedIds = 1;
+                    }
                     break;
+                }
+                
+                case ERROR: {
+                    if (strcmp(receivedMsg.payload, "01") == 0) {
+                        printf("Peer limit exceeded\n");
+                        close(peerConn->socket);
+                        return NULL;
+                    }
+                    break;
+                }
                 
                 case REQ_LOCREG:
                     // Print debug message as required in spec
@@ -87,6 +121,7 @@ void *handle_peer_connection(void *arg) {
 
                     // Send response with old location
                     char response[BUFSIZE];
+                    Message responseMsg;
                     snprintf(response, BUFSIZE, "%d", oldLoc);
                     setMessage(&responseMsg, RES_LOCREG, response);
                     send(peerConn->socket, &responseMsg, sizeof(Message), 0);
@@ -131,7 +166,6 @@ void *handle_peer_connection(void *arg) {
             }
         }
     }
-    return NULL;
 }
 
 void *handle_stdin(void *arg) {
@@ -200,32 +234,13 @@ int establish_peer_connection(const char* serverAddress, int port, PeerConnectio
     server_addr.sin_port = htons(port);
     server_addr.sin_addr.s_addr = INADDR_ANY;
 
-    // Set socket as non-blocking for connection attempt
-    int flags = fcntl(sock, F_GETFL, 0);
-    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-
-    connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
-    
-    // Set back to blocking mode
-    fcntl(sock, F_SETFL, flags);
-
-    fd_set fdset;
-    struct timeval tv;
-    FD_ZERO(&fdset);
-    FD_SET(sock, &fdset);
-    tv.tv_sec = 1;
-    tv.tv_usec = 0;
-
-    if (select(sock + 1, NULL, &fdset, NULL, &tv) == 1) {
-        int so_error;
-        socklen_t len = sizeof(so_error);
-        getsockopt(sock, SOL_SOCKET, SO_ERROR, &so_error, &len);
-        if (so_error == 0) {
-            peerConn->socket = sock;
-            peerConn->isConnected = 1;
-            peerConn->port = port;
-            return sock;
-        }
+    // Try to connect
+    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == 0) {
+        peerConn->socket = sock;
+        peerConn->isConnected = 1;
+        peerConn->isInitiator = 1;  // Mark as the initiating peer
+        peerConn->hasExchangedIds = 0;
+        return sock;
     }
 
     close(sock);
@@ -241,13 +256,20 @@ int main(int argc, char *argv[]) {
     int peer_port = atoi(argv[1]);  // 40000 for P2P
     int client_port = atoi(argv[2]); // 50000 or 60000 for clients
     
+    // Initialize random seed
+    srand(time(NULL));
+    
     UserServer userServer = {.userCount = 0};
     LocationServer locationServer = {.userCount = 0};
     PeerConnection peerConn = {
         .peerId = -1,
         .socket = -1,
         .isConnected = 0,
-        .port = peer_port
+        .port = peer_port,
+        .isInitiator = 0,
+        .hasExchangedIds = 0,
+        .myId = -1,
+        .theirId = -1
     };
 
     // Try to establish peer connection first
@@ -273,16 +295,20 @@ int main(int argc, char *argv[]) {
         peerConn.socket = accept(server_sock, (struct sockaddr*)&peer_addr, &addr_len);
         if (peerConn.socket >= 0) {
             peerConn.isConnected = 1;
-            printf("Peer connected\n");
+            peerConn.isInitiator = 0;
+            
+            pthread_t peer_thread;
+            pthread_create(&peer_thread, NULL, handle_peer_connection, &peerConn);
+            pthread_detach(peer_thread);
         }
         close(server_sock);
-    }
-
-    // Create threads for peer communication and stdin handling
-    pthread_t peer_thread, stdin_thread;
-    if (peerConn.isConnected) {
+    } else {
+        peerConn.isConnected = 1;
+        peerConn.isInitiator = 1;
+        
+        pthread_t peer_thread;
         pthread_create(&peer_thread, NULL, handle_peer_connection, &peerConn);
-        pthread_create(&stdin_thread, NULL, handle_stdin, &peerConn);
+        pthread_detach(peer_thread);
     }
 
     // Set up client server socket
@@ -304,6 +330,11 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Server listening for clients on port %d...\n", client_port);
+
+    // Create thread for stdin handling
+    pthread_t stdin_thread;
+    pthread_create(&stdin_thread, NULL, handle_stdin, &peerConn);
+    pthread_detach(stdin_thread);
 
     // Handle client connections in main thread
     while (1) {
@@ -333,8 +364,6 @@ int main(int argc, char *argv[]) {
 
     // Cleanup (this part will not be reached in the current implementation)
     if (peerConn.isConnected) {
-        pthread_join(peer_thread, NULL);
-        pthread_join(stdin_thread, NULL);
         close(peerConn.socket);
     }
     close(server_sock);

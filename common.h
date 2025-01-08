@@ -67,9 +67,19 @@ typedef struct {
     int socket;
     int isConnected;
     int port;
+    int isInitiator;        // Flag to indicate if this peer initiated the connection
+    int hasExchangedIds;    // Flag to track ID exchange status
+    int myId;               // This server's peer ID
+    int theirId;            // Connected peer's ID
+    int otherPeerConnected; // Flag to indicate if we already have another peer
     UserServer userServer;
     LocationServer locationServer;
 } PeerConnection;
+
+typedef struct {
+    int peerCount;
+    PeerConnection peer;
+} ServerState;
 
 typedef struct {
     int client_sock;
