@@ -46,6 +46,14 @@ void *handle_peer_connection(void *arg) {
             switch(receivedMsg.type) {
                 char response[BUFSIZE];
                 case REQ_CONNPEER:
+                    if (peerConn->otherPeerConnected) {
+                        setMessage(&sendMsg, ERROR, "01");
+                        send(peerConn->socket, &sendMsg, sizeof(Message), 0);
+                        close(peerConn->socket);
+                        return NULL;
+                    }
+                    peerConn->otherPeerConnected = 1;
+
                     // Generate a random PID for ourselves
                     peerConn->myId = rand() % 1000;
                     char pidStr[10];
@@ -89,6 +97,7 @@ void *handle_peer_connection(void *arg) {
                         printf("Peer %d disconnected\n", requestingPeerId);
                         
                         // Close connection and start listening
+                        peerConn->otherPeerConnected = 0;
                         peerConn->isConnected = 0;
                         close(peerConn->socket);
                         printf("No peer found, starting to listen...\n");
@@ -100,7 +109,7 @@ void *handle_peer_connection(void *arg) {
                     if (strcmp(receivedMsg.payload, "01") == 0) {
                         printf("Peer limit exceeded\n");
                         close(peerConn->socket);
-                        return NULL;
+                        exit(1);
                     }
                     if (strcmp(receivedMsg.payload, "02") == 0) {
                         printf("%s\n", returnErrorMessage(&receivedMsg));
@@ -208,6 +217,7 @@ void *handle_stdin(void *arg) {
                 if (recvMsg.type == OK && strcmp(recvMsg.payload, "01") == 0) {
                     printf("%s\n", returnOkMessage(&recvMsg));
                     printf("Peer %d disconnected\n", peerConn->theirId);
+                    peerConn->otherPeerConnected = 0;
                     close(peerConn->socket);
                     exit(0);  // Exit immediately after successful disconnection
                 } else if (recvMsg.type == ERROR) {
@@ -440,8 +450,6 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    printf("Server listening for clients on port %d...\n", client_port);
-
     // Create thread for stdin handling
     pthread_t stdin_thread;
     pthread_create(&stdin_thread, NULL, handle_stdin, &peerConn);
@@ -471,7 +479,7 @@ int main(int argc, char *argv[]) {
             struct sockaddr_in peer_addr;
             socklen_t addr_len = sizeof(peer_addr);
             
-            if (!peerConn.isConnected) {
+            if (!peerConn.isConnected && !peerConn.otherPeerConnected) {
                 peerConn.socket = accept(peer_server_sock, (struct sockaddr*)&peer_addr, &addr_len);
                 if (peerConn.socket >= 0) {
                     peerConn.isConnected = 1;
@@ -482,7 +490,15 @@ int main(int argc, char *argv[]) {
                     pthread_create(&peer_thread, NULL, handle_peer_connection, &peerConn);
                     pthread_detach(peer_thread);
                 }
-            }
+            } else{
+                int temp_sock = accept(peer_server_sock, (struct sockaddr*)&peer_addr, &addr_len);
+                if (temp_sock >= 0) {
+                    Message rejectMsg;
+                    setMessage(&rejectMsg, ERROR, "01");
+                    send(temp_sock, &rejectMsg, sizeof(Message), 0);
+                    close(temp_sock);
+                }
+            }       
         }
 
         // Check for client connections
