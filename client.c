@@ -31,32 +31,28 @@ int main(int argc, char *argv[]) {
     initializeClient(&clientState, locationId);
 
     struct sockaddr_storage userServerStorage, locationServerStorage;
-    int userSock = -1, locationSock = -1;
+    addrParse(serverAddress, userServerPort, &userServerStorage);
+    addrParse(serverAddress, locationServerPort, &locationServerStorage);
+
+    int userSock = socket(userServerStorage.ss_family, SOCK_STREAM, 0);
+    int locationSock = socket(locationServerStorage.ss_family, SOCK_STREAM, 0);
+
+    int ENABLE_IPV4 = 0;
+    setsockopt(userSock, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&ENABLE_IPV4, sizeof(ENABLE_IPV4));
+    setsockopt(locationSock, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&ENABLE_IPV4, sizeof(ENABLE_IPV4));
 
     // Connect to User Server
-    if (addrParse(serverAddress, userServerPort, &userServerStorage) == 0) {
-        userSock = socket(userServerStorage.ss_family, SOCK_STREAM, 0);
-        if (userSock != -1) {
-            if (connect(userSock, (struct sockaddr *)&userServerStorage, sizeof(userServerStorage)) == 0) {
-            } else {
-                perror("Failed to connect to User Server");
-                close(userSock);
-                userSock = -1;
-            }
-        }
+    if (connect(userSock, (struct sockaddr *)&userServerStorage, sizeof(userServerStorage)) < 0) {
+        perror("Failed to connect to User Server");
+        close(userSock);
+        userSock = -1;
     }
 
     // Connect to Location Server
-    if (addrParse(serverAddress, locationServerPort, &locationServerStorage) == 0) {
-        locationSock = socket(locationServerStorage.ss_family, SOCK_STREAM, 0);
-        if (locationSock != -1) {
-            if (connect(locationSock, (struct sockaddr *)&locationServerStorage, sizeof(locationServerStorage)) == 0) {
-            } else {
-                perror("Failed to connect to Location Server");
-                close(locationSock);
-                locationSock = -1;
-            }
-        }
+    if (connect(locationSock, (struct sockaddr *)&locationServerStorage, sizeof(locationServerStorage)) < 0) {
+        perror("Failed to connect to Location Server");
+        close(locationSock);
+        locationSock = -1;
     }
 
     if (userSock == -1 || locationSock == -1) {

@@ -421,12 +421,14 @@ int main(int argc, char *argv[]) {
     }
 
     // Set up client server socket
-    int client_server_sock = socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in server_addr = {
-        .sin_family = AF_INET,
-        .sin_port = htons(client_port),
-        .sin_addr.s_addr = INADDR_ANY
-    };
+    int client_server_sock = socket(AF_INET6, SOCK_STREAM, 0);
+    int enableDualStack = 0;
+    setsockopt(client_server_sock, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack));
+    
+    struct sockaddr_in6 server_addr = {0};
+    server_addr.sin6_family = AF_INET6;
+    server_addr.sin6_port = htons(client_port);
+    server_addr.sin6_addr = in6addr_any; 
 
     if (bind(client_server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         perror("Bind failed");
