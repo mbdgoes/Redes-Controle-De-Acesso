@@ -40,7 +40,6 @@ void *handle_peer_connection(void *arg) {
             if (bytesReceived <= 0) {
                 peerConn->isConnected = 0;
                 close(peerConn->socket);
-                printf("Peer disconnected\n");
                 break;
             }
 
@@ -115,7 +114,7 @@ void *handle_peer_connection(void *arg) {
                     sscanf(receivedMsg.payload, "%s %s", uid, locId);
                     printf("REQ_LOCREG %s %s\n", uid, locId);
 
-                    LocationServer *locServer = &peerConn->locationServer;
+                    LocationServer *locServer = peerConn->locationServer;
                     int loc = atoi(locId);
                     int oldLoc = -1;
                     int userFound = 0;
@@ -144,30 +143,29 @@ void *handle_peer_connection(void *arg) {
                     setMessage(&sendMsg, RES_LOCREG, response);
                     send(peerConn->socket, &sendMsg, sizeof(Message), 0);
                 break;
-                
-                case REQ_USRAUTH:
-                    // Print debug message as required in spec
+
+                case REQ_USRAUTH:{
                     printf("REQ_USRAUTH %s\n", receivedMsg.payload);
 
-                    // Check if user has special permissions
-                    UserServer *usrServer = &peerConn->userServer;
+                    // Check if user has special permissions in User Server
                     int isSpecial = 0;
-                    char *uuid = receivedMsg.payload;
-
-                    for(int i = 0; i < usrServer->userCount; i++) {
-                        if(strcmp(usrServer->userDatabase[i], uuid) == 0) {
-                            isSpecial = usrServer->specialPermissions[i];
+                    char *requestingUserId = receivedMsg.payload;
+                    
+                    for(int i = 0; i < peerConn->userServer->userCount; i++) {
+                        if(strcmp(peerConn->userServer->userDatabase[i], requestingUserId) == 0) {
+                            isSpecial = peerConn->userServer->specialPermissions[i];
                             break;
                         }
                     }
-
-                    // Send response with permission status
-                    Message responseMsg;
+                    
+                    // Send response with just the permission status
+                    char response[BUFSIZE];
                     snprintf(response, BUFSIZE, "%d", isSpecial);
-                    setMessage(&responseMsg, RES_USRAUTH, response);
-                    send(peerConn->socket, &responseMsg, sizeof(Message), 0);
+                    setMessage(&sendMsg, RES_USRAUTH, response);
+                    send(peerConn->socket, &sendMsg, sizeof(Message), 0);
+                }
                 break;
-                
+
                 case OK:
                     if (strcmp(receivedMsg.payload, "01") == 0) {
                         printf("%s\n", returnOkMessage(&receivedMsg));
@@ -232,8 +230,6 @@ void *handle_client(void *arg) {
             break;
         }
 
-        printf("DEBUG: Client thread received message type: %d\n", receivedMsg.type);
-
         // For REQ_USRACCESS messages, modify payload to include locationId
         if (receivedMsg.type == REQ_USRACCESS) {
             char userId[11], direction[4];
@@ -260,6 +256,50 @@ void *handle_client(void *arg) {
                 
                 // Convert to RES_USRACCESS and send to client
                 setMessage(&responseMsg, RES_USRACCESS, locResponse.payload);
+            }
+        }
+
+        if (receivedMsg.type == REQ_LOCLIST && params->locationServer != NULL) {
+            // We're in the Location Server, need to check authorization with User Server
+            if (params->peerConn->isConnected) {
+                // Extract userId from the original request
+                char userId[11], locId[10];
+                sscanf(receivedMsg.payload, "%s %s", userId, locId);
+                
+                // Create new auth request message
+                Message authRequest;
+                setMessage(&authRequest, REQ_USRAUTH, userId);
+                
+                // Send auth request to User Server
+                send(params->peerConn->socket, &authRequest, sizeof(Message), 0);
+                
+                // Wait for response from User Server
+                Message authResponse;
+                recv(params->peerConn->socket, &authResponse, sizeof(Message), 0);
+                
+                if (authResponse.type == RES_USRAUTH) {
+                    int isSpecial = atoi(authResponse.payload);
+                    if (!isSpecial) {
+                        setMessage(&responseMsg, ERROR, "19");  // Permission denied
+                    } else {
+                        // User is authorized, prepare list of users
+                        char userList[BUFSIZE] = "";
+                        int first = 1;
+                        int targetLoc = atoi(locId);
+                        
+                        for (int i = 0; i < params->locationServer->userCount; i++) {
+                            if (params->locationServer->lastLocationSeen[i] == targetLoc) {
+                                if (!first) {
+                                    strcat(userList, ", ");
+                                }
+                                strcat(userList, params->locationServer->locationUserDatabase[i]);
+                                first = 0;
+                            }
+                        }
+                        
+                        setMessage(&responseMsg, RES_LOCLIST, userList);
+                    }
+                }
             }
         }
         
@@ -328,9 +368,16 @@ int main(int argc, char *argv[]) {
         .hasExchangedIds = 0,
         .myId = -1,
         .theirId = -1,
-        .userServer = {.userCount = 0},
-        .locationServer = {.userCount = 0}
+        .otherPeerConnected = 0,
+        .userServer = NULL,
+        .locationServer = NULL
     };
+    if (client_port == 50000) {
+        peerConn.userServer = &userServer;
+    }
+    else if (client_port == 60000) {
+        peerConn.locationServer = &locationServer;
+    }
 
     // Try to establish peer connection first
     int peer_sock = establish_peer_connection("127.0.0.1", peer_port, &peerConn);
@@ -462,9 +509,14 @@ int main(int argc, char *argv[]) {
                 ClientThreadParams *params = malloc(sizeof(ClientThreadParams));
                 params->client_sock = client_sock;
                 params->peerConn = &peerConn;
-                params->userServer = &userServer;
-                params->locationServer = &locationServer;
-                params->locationId = locationId;  // Store the location ID
+                params->locationId = locationId;
+                if (client_port == 50000) {  // User Server
+                    params->userServer = &userServer;
+                    params->locationServer = NULL;
+                } else {  // Location Server
+                    params->userServer = NULL;
+                    params->locationServer = &locationServer;
+                }
 
                 // Process the initial connection message
                 Message responseMsg;

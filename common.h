@@ -40,9 +40,6 @@
 #define ERROR         255
 #define OK            0
 
-#define REQ_LOCATION  44 //debug
-#define LIST_DEBUG    77
-
 //============ STRUCTS =============================
 typedef struct Message {
     int type;          
@@ -69,13 +66,13 @@ typedef struct {
     int socket;
     int isConnected;
     int port;
-    int isInitiator;        // Flag to indicate if this peer initiated the connection
-    int hasExchangedIds;    // Flag to track ID exchange status
-    int myId;               // This server's peer ID
-    int theirId;            // Connected peer's ID
-    int otherPeerConnected; // Flag to indicate if we already have another peer
-    UserServer userServer;
-    LocationServer locationServer;
+    int isInitiator;       
+    int hasExchangedIds;   
+    int myId;              
+    int theirId;           
+    int otherPeerConnected;
+    UserServer *userServer;
+    LocationServer *locationServer;
 } PeerConnection;
 
 typedef struct {
@@ -107,7 +104,6 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 
 //============= FUNCOES DE DADOS ====================
 void setMessage(Message *message, int type, char* payload);
-void addUser(UserServer *server, Message* message, char *userId, int isSpecial);
 void findUser(LocationServer *locationServer, Message *message, char* userId);
 void initializeClient(ClientState *state, int locationId);
 int validateLocationId(int locationId);

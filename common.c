@@ -119,40 +119,10 @@ char* returnOkMessage(Message *message){
 	if(strcmp(message->payload,"03")==0) return "Successful update";
 }
 
-void addUser(UserServer *server, Message* message, char *userId, int isSpecial){
-	int userIndex = -1;
-	char payload[BUFSIZE];
-
-	for(int i = 0; i < server->userCount; i++){
-		if(strncmp(server->userDatabase[i], userId, 10) == 0){
-			userIndex = i;
-			break;
-		}
-	}
-
-	if (userIndex != -1) { // user Existe -> atualizar isSpecial
-        server->specialPermissions[userIndex] = isSpecial;
-        setMessage(message, OK, "03");
-    } else{
-		if(server->userCount >= MAX_USERS){ //User nao existe -> server cheio
-			setMessage(message, ERROR, "17");
-		}
-		else{ //Adiciona novo usuario
-			puts("DEBUG: user added");
-			strncpy(server->userDatabase[server->userCount], userId, 10);
-			server->userDatabase[server->userCount][10] = '\0';
-			server->specialPermissions[server->userCount] = isSpecial;
-			server->userCount++;
-			setMessage(message, OK, "02");
-		}
-	}
-}
-
 void findUser(LocationServer *server, Message *message, char* userId) {
     int userIndex = -1;
     char payload[BUFSIZE];
 
-    // Print debug message as required by spec
     printf("REQ_USRLOC %s\n", userId);
 
     // Search for user in the database
@@ -218,10 +188,6 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int c
         snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[0]);
         setMessage(sentMessage, REQ_USRACCESS, payload);
     }
-    else if (strcmp(inputs[0], "list") == 0) {
-        char nullPayload[BUFSIZE] = {0};
-        setMessage(sentMessage, LIST_DEBUG, nullPayload);
-    }
     else if (strcmp(inputs[0], "exit") == 0) {
         char nullPayload[BUFSIZE] = {0};
         setMessage(sentMessage, EXIT, nullPayload);
@@ -232,6 +198,15 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int c
             return;
         }
         setMessage(sentMessage, REQ_USRLOC, inputs[1]);
+    }
+    else if (strcmp(inputs[0], "inspect") == 0) {
+        if (count != 3 || strlen(inputs[1]) != 10) {
+            *error = 1;
+            return;
+        }
+        char payload[BUFSIZE];
+        snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[2]);
+        setMessage(sentMessage, REQ_LOCLIST, payload);
     }
     else {
         *error = 1;
@@ -274,8 +249,7 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             setMessage(message, RES_CONN, responsePayload);
         break;
 
-        case REQ_USRADD:
-            // Print debug message as required
+        case REQ_USRADD: {
             printf("REQ_USRADD %s\n", receivedData->payload);
             
             char userId[11];
@@ -305,11 +279,12 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
                 strncpy(userServer->userDatabase[userServer->userCount], userId, 10);
                 userServer->userDatabase[userServer->userCount][10] = '\0';
                 userServer->specialPermissions[userServer->userCount] = isSpecial;
-                userServer->userCount++;
                 char payload[BUFSIZE];
                 snprintf(payload, BUFSIZE, "02 %s", userId);
                 setMessage(message, OK, payload);
+                userServer->userCount++;
             }
+        }
         break;
 
         case REQ_USRACCESS:{
@@ -378,7 +353,6 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             char responsePayload[BUFSIZE];
             snprintf(responsePayload, BUFSIZE, "%d", oldLoc);
             setMessage(message, RES_LOCREG, responsePayload);
-            printf("DEBUG: Sending RES_LOCREG with old location: %d\n", oldLoc);
         }
         break;
 
@@ -386,21 +360,50 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             setMessage(message, RES_USRACCESS, receivedData->payload);
         break;
 
+        case REQ_LOCLIST: {
+            char userId[11], locId[10];
+            sscanf(receivedData->payload, "%s %s", userId, locId);
+            
+            if (locationServer != NULL) {
+                // Forward the authentication request to User Server
+                setMessage(message, REQ_USRAUTH, userId);
+            }
+            
+            setMessage(message, REQ_USRAUTH, userId);
+        }
+        break;
+
+        case RES_USRAUTH: {
+            char permission[2], locId[10];
+            sscanf(receivedData->payload, "%s %s", permission, locId);
+            int isSpecial = atoi(permission);
+            
+            if (!isSpecial) {
+                setMessage(message, ERROR, "19");  // Permission denied
+            } else {
+                // User has permission, gather users at location
+                char userList[BUFSIZE] = "";
+                int first = 1;
+                int targetLoc = atoi(locId);
+                
+                for (int i = 0; i < locationServer->userCount; i++) {
+                    if (locationServer->lastLocationSeen[i] == targetLoc) {
+                        if (!first) {
+                            strcat(userList, ", ");
+                        }
+                        strcat(userList, locationServer->locationUserDatabase[i]);
+                        first = 0;
+                    }
+                }
+                
+                setMessage(message, RES_LOCLIST, userList);
+            }
+        }
+        break;
+
         case REQ_USRLOC:
             sscanf(receivedData->payload, "%s", userId);
             findUser(locationServer, message, userId);
-        break;
-
-        case LIST_DEBUG:
-            int offset = 0;
-            for (int i = 0; i < userServer->userCount; i++) {
-                offset += snprintf(responsePayload + offset, BUFSIZE - offset, 
-                                "User %d: %s\n", i + 1, userServer->userDatabase[i]);
-                if (offset >= BUFSIZE) {
-                    break;
-                }
-            }
-            setMessage(message, LIST_DEBUG, responsePayload);
         break;
 		
 		case REQ_DISC:
@@ -460,13 +463,13 @@ void handleReceivedData(struct Message* receivedData, int sock, int serverType) 
             printf("Current location: %s\n", receivedData->payload);
         break;
 
-        case LIST_DEBUG:
-            printf("Received User List:\n%s", receivedData->payload);
-            break;
+        case RES_LOCLIST:
+            printf("List of people at the specified location: %s\n", receivedData->payload);
+        break;
 
         case ERROR:
             puts(returnErrorMessage(receivedData));
-            break;
+        break;
 
         case OK: {
             char code[3];
@@ -486,16 +489,16 @@ void handleReceivedData(struct Message* receivedData, int sock, int serverType) 
                     printf("SL Successful disconnect\n");
                 }
             }
-            break;
         }
+        break;
 
         case EXIT:
             close(sock);
             exit(0);
-            break;
+        break;
 
         default:
             puts("Invalid received message type");
-            break;
+        break;
     }
 }

@@ -38,7 +38,6 @@ int main(int argc, char *argv[]) {
         userSock = socket(userServerStorage.ss_family, SOCK_STREAM, 0);
         if (userSock != -1) {
             if (connect(userSock, (struct sockaddr *)&userServerStorage, sizeof(userServerStorage)) == 0) {
-                printf("DEBUG: Connected to User Server on port %s...\n", userServerPort);
             } else {
                 perror("Failed to connect to User Server");
                 close(userSock);
@@ -52,7 +51,6 @@ int main(int argc, char *argv[]) {
         locationSock = socket(locationServerStorage.ss_family, SOCK_STREAM, 0);
         if (locationSock != -1) {
             if (connect(locationSock, (struct sockaddr *)&locationServerStorage, sizeof(locationServerStorage)) == 0) {
-                printf("DEBUG: Connected to Location Server on port %s...\n", locationServerPort);
             } else {
                 perror("Failed to connect to Location Server");
                 close(locationSock);
@@ -119,10 +117,8 @@ int main(int argc, char *argv[]) {
             int targetSocket = -1;
             if (sentMessage.type == REQ_USRADD || sentMessage.type == REQ_USRACCESS || sentMessage.type == EXIT) {
                 targetSocket = userSock;
-            } else if (sentMessage.type == REQ_LOCATION || sentMessage.type == REQ_LOCLIST || sentMessage.type == REQ_USRLOC) {
+            } else if (sentMessage.type == REQ_LOCLIST || sentMessage.type == REQ_USRLOC) {
                 targetSocket = locationSock;
-            } else if (sentMessage.type == LIST_DEBUG) {
-                targetSocket = userSock;
             }
         
             if (targetSocket != -1) {
