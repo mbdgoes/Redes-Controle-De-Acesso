@@ -134,8 +134,15 @@ int main(int argc, char *argv[]) {
 
             // Wait for responses from both servers
             Message userResponse, locResponse;
-            recv(userSock, &userResponse, sizeof(Message), 0);
+            int receivedBytes = recv(userSock, &userResponse, sizeof(Message), 0);
             recv(locationSock, &locResponse, sizeof(Message), 0);
+
+            if(receivedBytes == 0){ // Se a primeira mensagem retorna 0 bytes (atingiu o limite)
+                printf("Client limit exceeded\n");
+                close(userSock);
+                close(locationSock);
+                exit(EXIT_FAILURE);
+            }
 
             // Handle responses
             handleReceivedData(&userResponse, userSock, 0);

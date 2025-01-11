@@ -508,8 +508,15 @@ int main(int argc, char *argv[]) {
             int client_sock = accept(client_server_sock, (struct sockaddr*)&client_addr, &addr_len);
             
             if (client_sock >= 0) {
-                printf("New client connected\n");
-                
+                int currentClientCount = 0;
+                if(client_port == 50000) currentClientCount = userServer.clientCount;
+                else currentClientCount = locationServer.clientCount;
+
+                if (currentClientCount >= 10) {
+                    printf("Client limit exceeded\n");
+                    close(client_sock);
+                    continue;
+                }
                 // Receive initial connection message
                 Message initMsg;
                 if (recv(client_sock, &initMsg, sizeof(Message), 0) <= 0) {

@@ -224,10 +224,12 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
         case REQ_CONN:
             // Check if we can accept more clients (max 10)
             if (userServer && userServer->clientCount >= 10) {
+                printf("Client limit exceeded\n");
                 setMessage(message, ERROR, "09");  // Client limit exceeded
                 return;
             }
             if (locationServer && locationServer->clientCount >= 10) {
+                printf("Client limit exceeded\n");
                 setMessage(message, ERROR, "09");  // Client limit exceeded
                 return;
             }
