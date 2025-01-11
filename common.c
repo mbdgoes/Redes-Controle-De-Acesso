@@ -366,11 +366,7 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             char userId[11], locId[10];
             sscanf(receivedData->payload, "%s %s", userId, locId);
             
-            if (locationServer != NULL) {
-                // Forward the authentication request to User Server
-                setMessage(message, REQ_USRAUTH, userId);
-            }
-            
+            printf("REQ_LOCLIST %s %s\n", userId, locId);
             setMessage(message, REQ_USRAUTH, userId);
         }
         break;
