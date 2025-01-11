@@ -97,21 +97,26 @@ typedef struct {
 } ClientState;
 
 
-//============ FUNCOES DE REDE =====================
-void DieWithUserMessage(const char *msg, const char *detail);
+//============ FUNCOES DE REDE =======================
 int initServerSockaddr(const char *proto, const char *portstr, struct sockaddr_storage *storage);
 int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage);
-
-//============= FUNCOES DE DADOS ====================
 void setMessage(Message *message, int type, char* payload);
-void findUser(LocationServer *locationServer, Message *message, char* userId);
-void initializeClient(ClientState *state, int locationId);
-int validateLocationId(int locationId);
-void handleConnectionResponse(Message *message, ClientState *state, int serverType);
 char* returnErrorMessage(Message *message);
 char* returnOkMessage(Message *message);
+
+//============= FUNCOES DE CLIENTE ====================
+void initializeClient(ClientState *state, int locationId);
 void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int clientId);
-void computeCommand(UserServer *userServer, LocationServer *LocationServer, Message *action, Message *receivedData);
+void handleConnectionResponse(Message *message, ClientState *state, int serverType);
 void handleReceivedData(struct Message* receivedData, int sock, int serverType);
+int validateLocationId(int locationId);
+
+//============= FUNCOES DE SERVIDOR  ==================
+void findUser(LocationServer *locationServer, Message *message, char* userId);
+int establishPeerConnection(const char* serverAddress, int port, PeerConnection *peerConn);
+void *handlePeerConnection(void *arg);
+void *handleServerStdin(void *arg);
+void *handleBothServersToClientMessages(void *arg);
+void computeCommand(UserServer *userServer, LocationServer *LocationServer, Message *action, Message *receivedData);
 
 #endif
