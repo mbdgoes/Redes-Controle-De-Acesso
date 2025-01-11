@@ -99,6 +99,7 @@ void *handle_peer_connection(void *arg) {
                         // Close connection and start listening
                         peerConn->otherPeerConnected = 0;
                         peerConn->isConnected = 0;
+                        peerConn->isInitiator = 0;
                         close(peerConn->socket);
                         printf("No peer found, starting to listen...\n");
                         return NULL;
@@ -219,7 +220,7 @@ void *handle_stdin(void *arg) {
                     printf("Peer %d disconnected\n", peerConn->theirId);
                     peerConn->otherPeerConnected = 0;
                     close(peerConn->socket);
-                    exit(0);  // Exit immediately after successful disconnection
+                    exit(0);
                 } else if (recvMsg.type == ERROR) {
                     printf("%s\n", returnErrorMessage(&recvMsg));
                 }
@@ -330,23 +331,25 @@ void *handle_client(void *arg) {
 }
 
 int establish_peer_connection(const char* serverAddress, int port, PeerConnection *peerConn) {
-    struct sockaddr_in server_addr;
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in6 server_addr = {0};
+    int sock = socket(AF_INET6, SOCK_STREAM, 0);
     
     if (sock < 0) {
         perror("Socket creation failed");
         return -1;
     }
 
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-    server_addr.sin_addr.s_addr = INADDR_ANY;
+    int enableDualStack = 0;
+    setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack));
 
-    // Try to connect
+    server_addr.sin6_family = AF_INET6;
+    server_addr.sin6_port = htons(port);
+    inet_pton(AF_INET6, "::1", &server_addr.sin6_addr);
+
     if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == 0) {
         peerConn->socket = sock;
         peerConn->isConnected = 1;
-        peerConn->isInitiator = 1;  // Mark as the initiating peer
+        peerConn->isInitiator = 1;
         peerConn->hasExchangedIds = 0;
         return sock;
     }
@@ -390,27 +393,34 @@ int main(int argc, char *argv[]) {
     }
 
     // Try to establish peer connection first
-    int peer_sock = establish_peer_connection("127.0.0.1", peer_port, &peerConn);
+    int peer_sock = establish_peer_connection("::1", peer_port, &peerConn);
     
     // Create peer server socket
     int peer_server_sock = -1;
     
     if (peer_sock < 0) {
-        printf("No peer found, starting to listen...\n");
-        
         // Set up listening socket for peer connections
-        peer_server_sock = socket(AF_INET, SOCK_STREAM, 0);
-        struct sockaddr_in server_addr = {
-            .sin_family = AF_INET,
-            .sin_port = htons(peer_port),
-            .sin_addr.s_addr = INADDR_ANY
-        };
+        peer_server_sock = socket(AF_INET6, SOCK_STREAM, 0);
+        if (peer_server_sock < 0) perror("Peer socket creation failed");
+        
+        int enableDualStack = 0;
+        int enableReuse = 1;
+        setsockopt(peer_server_sock, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(enableReuse));
+        setsockopt(peer_server_sock, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack));
 
-        bind(peer_server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
+        struct sockaddr_in6 server_addr = {0};
+        server_addr.sin6_family = AF_INET6;
+        server_addr.sin6_port = htons(peer_port);
+        server_addr.sin6_addr = in6addr_any;
+
+        int bindServer = bind(peer_server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
+        if(bindServer < 0) perror("Peer bind failed");
+        
+        printf("No peer found, starting to listen...\n");
         listen(peer_server_sock, 1);
 
         // Accept initial peer connection
-        struct sockaddr_in peer_addr;
+        struct sockaddr_in6 peer_addr;
         socklen_t addr_len = sizeof(peer_addr);
         peerConn.socket = accept(peer_server_sock, (struct sockaddr*)&peer_addr, &addr_len);
         if (peerConn.socket >= 0) {
@@ -422,18 +432,20 @@ int main(int argc, char *argv[]) {
             pthread_detach(peer_thread);
         }
     } else {
-        peerConn.isConnected = 1;
-        peerConn.isInitiator = 1;
-        
-        pthread_t peer_thread;
-        pthread_create(&peer_thread, NULL, handle_peer_connection, &peerConn);
-        pthread_detach(peer_thread);
-    }
+            peerConn.isConnected = 1;
+            peerConn.isInitiator = 1;
+            
+            pthread_t peer_thread;
+            pthread_create(&peer_thread, NULL, handle_peer_connection, &peerConn);
+            pthread_detach(peer_thread);
+        }
 
     // Set up client server socket
     int client_server_sock = socket(AF_INET6, SOCK_STREAM, 0);
     int enableDualStack = 0;
+    int enableReuse;
     setsockopt(client_server_sock, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack));
+    setsockopt(client_server_sock, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(enableReuse));
     
     struct sockaddr_in6 server_addr = {0};
     server_addr.sin6_family = AF_INET6;
