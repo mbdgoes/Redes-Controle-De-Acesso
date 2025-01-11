@@ -14,228 +14,223 @@
 
 #include "common.h"
 
+int setupPeerServerSocket(int peerPort) {
+    int peerServerSock = socket(AF_INET6, SOCK_STREAM, 0);
+    if (peerServerSock < 0) return -1;
+    
+    int enableDualStack = 0;
+    int enableReuse = 1;
+    setsockopt(peerServerSock, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(enableReuse));
+    setsockopt(peerServerSock, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack));
+
+    struct sockaddr_in6 serverAddr = {0};
+    serverAddr.sin6_family = AF_INET6;
+    serverAddr.sin6_port = htons(peerPort);
+    serverAddr.sin6_addr = in6addr_any;
+
+    if (bind(peerServerSock, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) return -1;
+    if (listen(peerServerSock, 1) < 0) return -1;
+    
+    return peerServerSock;
+}
+
+int setupClientServerSocket(int clientPort) {
+    int clientServerSock = socket(AF_INET6, SOCK_STREAM, 0);
+    if (clientServerSock < 0) return -1;
+
+    int enableDualStack = 0;
+    int enableReuse = 1;
+    setsockopt(clientServerSock, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack));
+    setsockopt(clientServerSock, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(enableReuse));
+    
+    struct sockaddr_in6 serverAddr = {0};
+    serverAddr.sin6_family = AF_INET6;
+    serverAddr.sin6_port = htons(clientPort);
+    serverAddr.sin6_addr = in6addr_any;
+
+    if (bind(clientServerSock, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) return -1;
+    if (listen(clientServerSock, 10) < 0) return -1;
+
+    return clientServerSock;
+}
+
+//Preenche as flags da struct de controle de acordo com o necessario
+void initializePeerConnection(PeerConnection *peerConn, int peerPort, int clientPort, 
+                                   UserServer *userServer, LocationServer *locationServer) {
+    peerConn->peerId = -1;
+    peerConn->socket = -1;
+    peerConn->isConnected = 0;
+    peerConn->port = peerPort;
+    peerConn->isInitiator = 0;
+    peerConn->hasExchangedIds = 0;
+    peerConn->myId = -1;
+    peerConn->theirId = -1;
+    peerConn->otherPeerConnected = 0;
+    peerConn->userServer = NULL;
+    peerConn->locationServer = NULL;
+
+    //Apenas preenche o servidor de acordo com a porta atual
+    if (clientPort == USER_SERVER_PORT) { 
+        peerConn->userServer = userServer;
+    } else if (clientPort == LOCATION_SERVER_PORT) {
+        peerConn->locationServer = locationServer;
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 3) {
         printf("Parameters: <Server port> <Client port>\n");
         exit(EXIT_FAILURE);
     }
 
-    int peer_port = atoi(argv[1]);  // 40000 for P2P
-    int client_port = atoi(argv[2]); // 50000 or 60000 for clients
+    int peerPort = atoi(argv[1]);
+    int clientPort = atoi(argv[2]);
     
-    // Initialize random seed
     srand(time(NULL));
     
     UserServer userServer = {.userCount = 0};
     LocationServer locationServer = {.userCount = 0};
-    PeerConnection peerConn = {
-        .peerId = -1,
-        .socket = -1,
-        .isConnected = 0,
-        .port = peer_port,
-        .isInitiator = 0,
-        .hasExchangedIds = 0,
-        .myId = -1,
-        .theirId = -1,
-        .otherPeerConnected = 0,
-        .userServer = NULL,
-        .locationServer = NULL
-    };
-    if (client_port == 50000) {
-        peerConn.userServer = &userServer;
-    }
-    else if (client_port == 60000) {
-        peerConn.locationServer = &locationServer;
-    }
+    PeerConnection peerConn;
+    initializePeerConnection(&peerConn, peerPort, clientPort, &userServer, &locationServer);
 
-    // Try to establish peer connection first
-    int peer_sock = establishPeerConnection("::1", peer_port, &peerConn);
+    int peerServerSock = -1;
+    int peerSock = establishPeerConnection("::1", peerPort, &peerConn); //Tenta conectar com o peer
     
-    // Create peer server socket
-    int peer_server_sock = -1;
-    
-    if (peer_sock < 0) {
-        // Set up listening socket for peer connections
-        peer_server_sock = socket(AF_INET6, SOCK_STREAM, 0);
-        if (peer_server_sock < 0) perror("Peer socket creation failed");
-        
-        int enableDualStack = 0;
-        int enableReuse = 1;
-        setsockopt(peer_server_sock, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(enableReuse));
-        setsockopt(peer_server_sock, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack));
-
-        struct sockaddr_in6 server_addr = {0};
-        server_addr.sin6_family = AF_INET6;
-        server_addr.sin6_port = htons(peer_port);
-        server_addr.sin6_addr = in6addr_any;
-
-        int bindServer = bind(peer_server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
-        if(bindServer < 0) perror("Peer bind failed");
-        
+    if (peerSock < 0) {// Se nao existe o peer, o server passa a escutar novas conexoes
+        peerServerSock = setupPeerServerSocket(peerPort);
+        if (peerServerSock < 0) {
+            exit(EXIT_FAILURE);
+        }
         printf("No peer found, starting to listen...\n");
-        listen(peer_server_sock, 1);
+    } else { // Estabelecida a conexao com o peer
+        peerConn.isConnected = 1;
+        peerConn.isInitiator = 1;
+        pthread_t peerThread;
+        // Entra na thread de comunicacao com o peer
+        pthread_create(&peerThread, NULL, handlePeerConnection, &peerConn);
+        pthread_detach(peerThread);
+    }
 
-        // Accept initial peer connection
-        struct sockaddr_in6 peer_addr;
-        socklen_t addr_len = sizeof(peer_addr);
-        peerConn.socket = accept(peer_server_sock, (struct sockaddr*)&peer_addr, &addr_len);
-        if (peerConn.socket >= 0) {
-            peerConn.isConnected = 1;
-            peerConn.isInitiator = 0;
-            
-            pthread_t peer_thread;
-            pthread_create(&peer_thread, NULL, handlePeerConnection, &peerConn);
-            pthread_detach(peer_thread);
-        }
-    } else {
-            peerConn.isConnected = 1;
-            peerConn.isInitiator = 1;
-            
-            pthread_t peer_thread;
-            pthread_create(&peer_thread, NULL, handlePeerConnection, &peerConn);
-            pthread_detach(peer_thread);
-        }
-
-    // Set up client server socket
-    int client_server_sock = socket(AF_INET6, SOCK_STREAM, 0);
-    int enableDualStack = 0;
-    int enableReuse;
-    setsockopt(client_server_sock, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack));
-    setsockopt(client_server_sock, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(enableReuse));
-    
-    struct sockaddr_in6 server_addr = {0};
-    server_addr.sin6_family = AF_INET6;
-    server_addr.sin6_port = htons(client_port);
-    server_addr.sin6_addr = in6addr_any; 
-
-    if (bind(client_server_sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Bind failed");
+    int clientServerSock = setupClientServerSocket(clientPort);
+    if (clientServerSock < 0) {
+        if (peerConn.isConnected) close(peerConn.socket);
+        if (peerServerSock != -1) close(peerServerSock);
         exit(EXIT_FAILURE);
     }
 
-    if (listen(client_server_sock, 10) < 0) {
-        perror("Listen failed");
-        exit(EXIT_FAILURE);
-    }
+    // Thread para os comandos do stdin dos servidores (kill)
+    pthread_t stdinThread;
+    pthread_create(&stdinThread, NULL, handleServerStdin, &peerConn);
+    pthread_detach(stdinThread);
 
-    // Create thread for stdin handling
-    pthread_t stdin_thread;
-    pthread_create(&stdin_thread, NULL, handleServerStdin, &peerConn);
-    pthread_detach(stdin_thread);
-
-    // Set up fd_set for multiple socket handling
-    fd_set master_fds;
-    FD_ZERO(&master_fds);
-    FD_SET(client_server_sock, &master_fds);
-    int maxfd = client_server_sock;
+    // Inicia os FDs para o select
+    fd_set masterFds;
+    FD_ZERO(&masterFds);
+    FD_SET(clientServerSock, &masterFds);
+    int maxfd = clientServerSock;
     
-    if (peer_server_sock != -1) {
-        FD_SET(peer_server_sock, &master_fds);
-        maxfd = (peer_server_sock > maxfd) ? peer_server_sock : maxfd;
+    if (peerServerSock != -1) {
+        FD_SET(peerServerSock, &masterFds);
+        maxfd = (peerServerSock > maxfd) ? peerServerSock : maxfd;
     }
 
-    // Handle connections in main thread
+    // Loop Principal do server
     while (1) {
-        fd_set read_fds = master_fds;
-        if (select(maxfd + 1, &read_fds, NULL, NULL, NULL) < 0) {
+        fd_set readFds = masterFds;
+        if (select(maxfd + 1, &readFds, NULL, NULL, NULL) < 0) {
             perror("select");
             continue;
         }
-
-        // Check for peer connections
-        if (peer_server_sock != -1 && FD_ISSET(peer_server_sock, &read_fds)) {
-            struct sockaddr_in peer_addr;
-            socklen_t addr_len = sizeof(peer_addr);
+        // Checa conexao do peer
+        if (peerServerSock != -1 && FD_ISSET(peerServerSock, &readFds)) {
+            struct sockaddr_in6 peerAddr;
+            socklen_t addrLen = sizeof(peerAddr);
             
-            if (!peerConn.isConnected && !peerConn.otherPeerConnected) {
-                peerConn.socket = accept(peer_server_sock, (struct sockaddr*)&peer_addr, &addr_len);
+            if (!peerConn.isConnected && !peerConn.otherPeerConnected) { // Aceita conexao nova se nao tem peer
+                peerConn.socket = accept(peerServerSock, (struct sockaddr*)&peerAddr, &addrLen);
                 if (peerConn.socket >= 0) {
                     peerConn.isConnected = 1;
                     peerConn.isInitiator = 0;
                     peerConn.hasExchangedIds = 0;
                     
-                    pthread_t peer_thread;
-                    pthread_create(&peer_thread, NULL, handlePeerConnection, &peerConn);
-                    pthread_detach(peer_thread);
+                    pthread_t peerThread;
+                    pthread_create(&peerThread, NULL, handlePeerConnection, &peerConn);
+                    pthread_detach(peerThread);
                 }
-            } else{
-                int temp_sock = accept(peer_server_sock, (struct sockaddr*)&peer_addr, &addr_len);
-                if (temp_sock >= 0) {
+            } else { // Rejeita a conexao se ja existe um peer
+                int tempSock = accept(peerServerSock, (struct sockaddr*)&peerAddr, &addrLen);
+                if (tempSock >= 0) {
                     Message rejectMsg;
                     setMessage(&rejectMsg, ERROR, "01");
-                    send(temp_sock, &rejectMsg, sizeof(Message), 0);
-                    close(temp_sock);
+                    send(tempSock, &rejectMsg, sizeof(Message), 0);
+                    close(tempSock);
                 }
             }       
         }
 
-        // Check for client connections
-        if (FD_ISSET(client_server_sock, &read_fds)) {
-            struct sockaddr_in client_addr;
-            socklen_t addr_len = sizeof(client_addr);
-            int client_sock = accept(client_server_sock, (struct sockaddr*)&client_addr, &addr_len);
+        // Checa conexao de novos clientes
+        if (FD_ISSET(clientServerSock, &readFds)) {
+            struct sockaddr_in6 clientAddr;
+            socklen_t addrLen = sizeof(clientAddr);
+            int clientSock = accept(clientServerSock, (struct sockaddr*)&clientAddr, &addrLen);
             
-            if (client_sock >= 0) {
+            if (clientSock >= 0) { 
+                // Checa o limite de clientes
                 int currentClientCount = 0;
-                if(client_port == 50000) currentClientCount = userServer.clientCount;
+                if(clientPort == USER_SERVER_PORT) currentClientCount = userServer.clientCount;
                 else currentClientCount = locationServer.clientCount;
 
                 if (currentClientCount >= 10) {
                     printf("Client limit exceeded\n");
-                    close(client_sock);
-                    continue;
-                }
-                // Receive initial connection message
-                Message initMsg;
-                if (recv(client_sock, &initMsg, sizeof(Message), 0) <= 0) {
-                    printf("Error receiving initial message\n");
-                    close(client_sock);
+                    close(clientSock);
                     continue;
                 }
 
-                // Extract location ID from initial message
+                // Processa mensagem inicial de conexao (REQ_CONN)
+                Message initMsg;
+                if (recv(clientSock, &initMsg, sizeof(Message), 0) <= 0) {
+                    close(clientSock);
+                    continue;
+                }
+
                 int locationId = -1;
                 if (initMsg.type == REQ_CONN) {
                     locationId = atoi(initMsg.payload);
                 }
                 
+                // Preenche os parametros de clientes para a thread
                 ClientThreadParams *params = malloc(sizeof(ClientThreadParams));
-                params->client_sock = client_sock;
+                params->client_sock = clientSock;
                 params->peerConn = &peerConn;
                 params->locationId = locationId;
-                if (client_port == 50000) {  // User Server
+                if (clientPort == USER_SERVER_PORT) {
                     params->userServer = &userServer;
                     params->locationServer = NULL;
-                } else {  // Location Server
+                } else {
                     params->userServer = NULL;
                     params->locationServer = &locationServer;
                 }
 
-                // Process the initial connection message
+                // Resposta a mensagem inicial de conexao
                 Message responseMsg;
                 computeCommand(params->userServer, params->locationServer, &responseMsg, &initMsg);
-                send(client_sock, &responseMsg, sizeof(Message), 0);
+                send(clientSock, &responseMsg, sizeof(Message), 0);
 
-                pthread_t client_thread;
-                if (pthread_create(&client_thread, NULL, handleBothServersToClientMessages, params) != 0) {
-                    perror("Failed to create client thread");
+                // Entra na thread de comunicao com o cliente (processa os novos comandos)
+                pthread_t clientThread;
+                if (pthread_create(&clientThread, NULL, handleClientMessages, params) != 0) {
                     free(params);
-                    close(client_sock);
+                    close(clientSock);
                 } else {
-                    pthread_detach(client_thread);
+                    pthread_detach(clientThread);
                 }
             }
         }
     }
 
-    // Cleanup
-    if (peerConn.isConnected) {
-        close(peerConn.socket);
-    }
-    if (peer_server_sock != -1) {
-        close(peer_server_sock);
-    }
-    close(client_server_sock);
+    if (peerConn.isConnected) close(peerConn.socket);
+    if (peerServerSock != -1) close(peerServerSock);
+    close(clientServerSock);
 
     return 0;
 }

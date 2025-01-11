@@ -103,12 +103,14 @@ char* returnErrorMessage(Message *message){
 	if(strcmp(message->payload,"17")==0) return "User limit exceeded";
 	if(strcmp(message->payload,"18")==0) return "User not found";
 	if(strcmp(message->payload,"19")==0) return "Permission denied";
+    return "";
 }
 
 char* returnOkMessage(Message *message){
 	if(strcmp(message->payload,"01")==0) return "Successful disconnect";
 	if(strcmp(message->payload,"02")==0) return "Successful create";
 	if(strcmp(message->payload,"03")==0) return "Successful update";
+    return "";
 }
 
 int establishPeerConnection(const char* serverAddress, int port, PeerConnection *peerConn) {
@@ -316,6 +318,7 @@ void *handlePeerConnection(void *arg) {
             }
         }
     }
+    return NULL;
 }
 
 void *handleServerStdin(void *arg) {
@@ -355,7 +358,7 @@ void *handleServerStdin(void *arg) {
     return NULL;
 }
 
-void *handleBothServersToClientMessages(void *arg) {
+void *handleClientMessages(void *arg) {
     ClientThreadParams *params = (ClientThreadParams *)arg;
     Message receivedMsg, responseMsg;
     

@@ -16,6 +16,8 @@
 //================ CONSTANTES ====================
 #define BUFSIZE       500
 #define MAX_USERS     30
+#define USER_SERVER_PORT 50000
+#define LOCATION_SERVER_PORT 60000
 
 #define EXIT          -1
 #define REQ_CONNPEER  17
@@ -116,7 +118,7 @@ void findUser(LocationServer *locationServer, Message *message, char* userId);
 int establishPeerConnection(const char* serverAddress, int port, PeerConnection *peerConn);
 void *handlePeerConnection(void *arg);
 void *handleServerStdin(void *arg);
-void *handleBothServersToClientMessages(void *arg);
+void *handleClientMessages(void *arg);
 void computeCommand(UserServer *userServer, LocationServer *LocationServer, Message *action, Message *receivedData);
 
 #endif
