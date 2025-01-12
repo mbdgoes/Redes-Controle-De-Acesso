@@ -112,7 +112,7 @@ char* returnOkMessage(Message *message);
 
 //============= FUNCOES DE CLIENTE ====================
 void initializeClient(ClientState *state, int locationId);
-void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int* clientIds);
+void parseUserCommand(Message *sentMessage, char command[BUFSIZE], int* error, int* clientIds);
 void handleConnectionResponse(Message *message, ClientState *state, int serverType);
 void handleReceivedData(struct Message* receivedData, int sock, int serverType);
 int validateLocationId(int locationId);
@@ -124,6 +124,6 @@ int generateUniqueClientId(int* clientIds, int clientCount);
 void *handlePeerConnection(void *arg);
 void *handleServerStdin(void *arg);
 void *handleClientMessages(void *arg);
-void computeCommand(UserServer *userServer, LocationServer *LocationServer, Message *action, Message *receivedData);
+void processServerMessage(UserServer *userServer, LocationServer *LocationServer, Message *action, Message *receivedData);
 
 #endif

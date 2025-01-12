@@ -82,11 +82,8 @@ int main(int argc, char *argv[]) {
 
     while (1) {
         workingSet = masterSet;
-        if (select(maxfd + 1, &workingSet, NULL, NULL, NULL) < 0) {
-            perror("select error");
-            break;
-        }
-
+        select(maxfd + 1, &workingSet, NULL, NULL, NULL);
+        
         // Apenas processa o comando do usuario se estiver inicializado nos servers
         if (clientState.isInitialized && FD_ISSET(STDIN_FILENO, &workingSet)) {
             char command[BUFSIZE];
@@ -95,7 +92,7 @@ int main(int argc, char *argv[]) {
 
             int error = 0;
             memset(&sentMessage, 0, sizeof(Message));
-            computeInput(&sentMessage, command, &error, clientState.clientIds); // Cria a mensagem que vai ser enviada
+            parseUserCommand(&sentMessage, command, &error, clientState.clientIds); // Cria a mensagem que vai ser enviada
 
             if (error) {
                 printf("Error processing command\n");

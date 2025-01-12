@@ -242,7 +242,7 @@ int main(int argc, char *argv[]) {
 
                 // Resposta a mensagem inicial de conexao
                 Message responseMsg;
-                computeCommand(params->userServer, params->locationServer, &responseMsg, &initMsg);
+                processServerMessage(params->userServer, params->locationServer, &responseMsg, &initMsg);
                 send(clientSock, &responseMsg, sizeof(Message), 0);
 
                 // Entra na thread de comunicao com o cliente (processa os novos comandos)

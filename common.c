@@ -334,7 +334,7 @@ void *handleClientMessages(void *arg) {
                 strcpy(receivedMsg.payload, newPayload);
 
                 // Processa comando e gera mensagem de resposta
-                computeCommand(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
+                processServerMessage(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
                 
                 if (responseMsg.type != ERROR && params->peerConn->isConnected) {
                     // Encaminha REQ_LOCREG para servidor de localização
@@ -382,13 +382,13 @@ void *handleClientMessages(void *arg) {
                     }
                 } else {
                     // Processa normalmente se não estiver no servidor de localização
-                    computeCommand(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
+                    processServerMessage(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
                 }
                 break;
 
             case REQ_DISC:
                 //Saida do cliente
-                computeCommand(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
+                processServerMessage(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
                 send(params->client_sock, &responseMsg, sizeof(Message), 0);
 
                 //Limpa parametros dos clientes
@@ -398,7 +398,7 @@ void *handleClientMessages(void *arg) {
 
             default:
                 // Processa outros tipos de mensagens normalmente
-                computeCommand(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
+                processServerMessage(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
             break;
         }
         
@@ -434,7 +434,7 @@ void findUser(LocationServer *server, Message *message, char* userId) {
 }
 
 //Faz o parsing do input do cliente no terminal
-void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int* clientIds) {
+void parseUserCommand(Message *sentMessage, char command[BUFSIZE], int* error, int* clientIds) {
     char *inputs[BUFSIZE];
     char *token = strtok(command, " ");
     int count = 0;
@@ -521,7 +521,7 @@ int generateUniqueClientId(int* clientIds, int clientCount) {
 
 
 // Funcao auxiliar dos servidores para atuar nas mensagens recebidas dos clientes
-void computeCommand(UserServer *userServer, LocationServer *locationServer, Message *message, Message *receivedData) {
+void processServerMessage(UserServer *userServer, LocationServer *locationServer, Message *message, Message *receivedData) {
     char responsePayload[BUFSIZE] = {0};
     char userId[11] = {0};
     
