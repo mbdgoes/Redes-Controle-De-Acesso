@@ -93,9 +93,9 @@ typedef struct {
 typedef struct {
     int clientId;
     int locationId;
-    int isInitialized;     // Flag to track if client has received IDs from both servers
-    int hasUserServerId;   // Flag to track if received ID from user server
-    int hasLocServerId;    // Flag to track if received ID from location server
+    int isInitialized;
+    int hasUserServerId;
+    int hasLocServerId;
 } ClientState;
 
 

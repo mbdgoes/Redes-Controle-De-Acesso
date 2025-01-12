@@ -365,7 +365,6 @@ void *handleClientMessages(void *arg) {
     while (1) {
         int bytesReceived = recv(params->client_sock, &receivedMsg, sizeof(Message), 0);
         if (bytesReceived <= 0) {
-            printf("Client disconnected\n");
             break;
         }
 
@@ -763,12 +762,6 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             if (!clientFound) {
                 setMessage(message, ERROR, "10");
             }
-        break;
-
-        case EXIT:
-            puts("client disconnected\n");
-            char nullPayload[BUFSIZE] = {0};
-            setMessage(message, EXIT, nullPayload);
         break;
         
         default:
