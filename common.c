@@ -51,6 +51,7 @@ int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage 
 	return -1;
 }
 
+// Funcao basica para preencher o tipo e payload das mensagens
 void setMessage(Message *message, int type, char* payload) {
     if (!message || !payload) return;
     
@@ -77,9 +78,11 @@ int validateLocationId(int locationId) {
     return (locationId >= 1 && locationId <= 10);
 }
 
+// Atualiza o estado do cliente apos a conexao
 void handleConnectionResponse(Message *message, ClientState *state, int serverType) {
     if (message->type == RES_CONN) {
         int assignedId = atoi(message->payload);
+        
         if (serverType == 0) { // User Server
             state->hasUserServerId = 1;
             printf("SU New ID: %d\n", assignedId);
@@ -87,7 +90,6 @@ void handleConnectionResponse(Message *message, ClientState *state, int serverTy
             state->hasLocServerId = 1;
             printf("SL New ID: %d\n", assignedId);
         }
-        
         if (state->hasUserServerId && state->hasLocServerId) {
             state->isInitialized = 1;
             state->clientId = assignedId;
@@ -95,93 +97,47 @@ void handleConnectionResponse(Message *message, ClientState *state, int serverTy
     }
 }
 
-char* returnErrorMessage(Message *message){
-	if(strcmp(message->payload,"01")==0) return "Peer limit excedeed";
-	if(strcmp(message->payload,"02")==0) return "Peer not found";
-	if(strcmp(message->payload,"09")==0) return "Client limit exceeded";
-	if(strcmp(message->payload,"10")==0) return "Client not found";
-	if(strcmp(message->payload,"17")==0) return "User limit exceeded";
-	if(strcmp(message->payload,"18")==0) return "User not found";
-	if(strcmp(message->payload,"19")==0) return "Permission denied";
-    return "";
-}
-
-char* returnOkMessage(Message *message){
-	if(strcmp(message->payload,"01")==0) return "Successful disconnect";
-	if(strcmp(message->payload,"02")==0) return "Successful create";
-	if(strcmp(message->payload,"03")==0) return "Successful update";
-    return "";
-}
-
-int establishPeerConnection(const char* serverAddress, int port, PeerConnection *peerConn) {
-    struct sockaddr_in6 server_addr = {0};
-    int sock = socket(AF_INET6, SOCK_STREAM, 0);
-    
-    if (sock < 0) {
-        perror("Socket creation failed");
-        return -1;
-    }
-
-    int enableDualStack = 0;
-    setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack));
-
-    server_addr.sin6_family = AF_INET6;
-    server_addr.sin6_port = htons(port);
-    inet_pton(AF_INET6, "::1", &server_addr.sin6_addr);
-
-    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == 0) {
-        peerConn->socket = sock;
-        peerConn->isConnected = 1;
-        peerConn->isInitiator = 1;
-        peerConn->hasExchangedIds = 0;
-        return sock;
-    }
-
-    close(sock);
-    return -1;
-}
-
+// Funcao utilizada na thread para comunicacao P2P
 void *handlePeerConnection(void *arg) {
     PeerConnection *peerConn = (PeerConnection *)arg;
     Message receivedMsg, sendMsg;
     fd_set current_sockets, ready_sockets;
     
-    FD_ZERO(&current_sockets);
-    FD_SET(peerConn->socket, &current_sockets);
+    FD_ZERO(&current_sockets); 
+    FD_SET(peerConn->socket, &current_sockets); // Adiciona o socket aos FDs
 
-    // If this is the connecting server (active side), send initial REQ_CONNPEER
+    // O servidor que inicia a conexao envia REQ_CONNPEER
     if (peerConn->isInitiator) {
         setMessage(&sendMsg, REQ_CONNPEER, "");
         send(peerConn->socket, &sendMsg, sizeof(Message), 0);
     }
 
+    // Loop principal da thread
     while (1) {
         ready_sockets = current_sockets;
-        if (select(FD_SETSIZE, &ready_sockets, NULL, NULL, NULL) < 0) {
-            perror("select error");
-            break;
-        }
+        select(FD_SETSIZE, &ready_sockets, NULL, NULL, NULL);
 
-        if (FD_ISSET(peerConn->socket, &ready_sockets)) {
+        if (FD_ISSET(peerConn->socket, &ready_sockets)) { // Verifica o estado dos sockets 
             int bytesReceived = recv(peerConn->socket, &receivedMsg, sizeof(Message), 0);
             if (bytesReceived <= 0) {
                 peerConn->isConnected = 0;
                 close(peerConn->socket);
                 break;
             }
-
+            //Checa o tipo da mensagem
             switch(receivedMsg.type) {
                 char response[BUFSIZE];
+
                 case REQ_CONNPEER:
-                    if (peerConn->otherPeerConnected) {
-                        setMessage(&sendMsg, ERROR, "01");
+                    if (peerConn->otherPeerConnected) { //Se ja existe outro peer
+                        setMessage(&sendMsg, ERROR, "01"); // Limite excedido
                         send(peerConn->socket, &sendMsg, sizeof(Message), 0);
                         close(peerConn->socket);
                         return NULL;
                     }
                     peerConn->otherPeerConnected = 1;
 
-                    // Generate a random PID for ourselves
+                    // Gera um Id aleatorio para o peer e envia como resposta
                     peerConn->myId = rand() % 1000;
                     char pidStr[10];
                     snprintf(pidStr, sizeof(pidStr), "%d", peerConn->myId);
@@ -193,11 +149,11 @@ void *handlePeerConnection(void *arg) {
                 break;
                 
                 case RES_CONNPEER:
-                    // Store their ID and print it
+                    // Recebe o ID e armazena
                     peerConn->theirId = atoi(receivedMsg.payload);
                     printf("New Peer ID: %d\n", peerConn->theirId);
                     
-                    // If we haven't sent our ID yet and we're the initiator
+                    // Se o peer iniciador ainda nao trocou os IDs envia como resposta
                     if (peerConn->isInitiator && !peerConn->hasExchangedIds) {
                         peerConn->myId = rand() % 1000;
                         char myPidStr[10];
@@ -214,16 +170,15 @@ void *handlePeerConnection(void *arg) {
                 case REQ_DISCPEER:
                     int requestingPeerId = atoi(receivedMsg.payload);
                     
-                    if (requestingPeerId != peerConn->theirId) {
-                        setMessage(&sendMsg, ERROR, "02");
+                    if (requestingPeerId != peerConn->theirId) { // Se o ID do peer invalido
+                        setMessage(&sendMsg, ERROR, "02"); // Peer nao encontrado
                         send(peerConn->socket, &sendMsg, sizeof(Message), 0);
-                    } else {
-                        // Valid peer ID
+                    } else { // Se peer foi encontrado
                         setMessage(&sendMsg, OK, "01");
                         send(peerConn->socket, &sendMsg, sizeof(Message), 0);
                         printf("Peer %d disconnected\n", requestingPeerId);
                         
-                        // Close connection and start listening
+                        // Limpa estado do peer
                         peerConn->otherPeerConnected = 0;
                         peerConn->isConnected = 0;
                         peerConn->isInitiator = 0;
@@ -239,12 +194,11 @@ void *handlePeerConnection(void *arg) {
                         close(peerConn->socket);
                         exit(1);
                     }
-                    if (strcmp(receivedMsg.payload, "02") == 0) {
+                    if (strcmp(receivedMsg.payload, "02") == 0) { // Peer nao encontrado
                         printf("%s\n", returnErrorMessage(&receivedMsg));
                     }
-                    break;
-                    break;
                 }
+                break;
                 
                 case REQ_LOCREG:
                     char uid[11], locId[10];
@@ -253,20 +207,20 @@ void *handlePeerConnection(void *arg) {
 
                     LocationServer *locServer = peerConn->locationServer;
                     int loc = atoi(locId);
-                    int oldLoc = -1;
+                    int oldLoc = -1; // User nao tinha localizacao anterior
                     int userFound = 0;
 
-                    // Search for existing user location
+                    // Procura se o usuario existe no banco de dados de localizacao
                     for(int i = 0; i < locServer->userCount; i++) {
                         if(strcmp(locServer->locationUserDatabase[i], uid) == 0) {
-                            oldLoc = locServer->lastLocationSeen[i];
+                            oldLoc = locServer->lastLocationSeen[i]; // Guarda a localizacao antiga
                             locServer->lastLocationSeen[i] = loc;
                             userFound = 1;
                             break;
                         }
                     }
 
-                    // If user not found, add them
+                    // Se o usuario nao estiver no banco de dados de localizacao, adiciona
                     if(!userFound) {
                         strncpy(locServer->locationUserDatabase[locServer->userCount], uid, 10);
                         locServer->locationUserDatabase[locServer->userCount][10] = '\0';
@@ -275,7 +229,7 @@ void *handlePeerConnection(void *arg) {
                         oldLoc = -1;
                     }
 
-                    // Send response with old location
+                    // Resposta com a localizacao anterior do usuario
                     snprintf(response, BUFSIZE, "%d", oldLoc);
                     setMessage(&sendMsg, RES_LOCREG, response);
                     send(peerConn->socket, &sendMsg, sizeof(Message), 0);
@@ -283,11 +237,10 @@ void *handlePeerConnection(void *arg) {
 
                 case REQ_USRAUTH:{
                     printf("REQ_USRAUTH %s\n", receivedMsg.payload);
-
-                    // Check if user has special permissions in User Server
                     int isSpecial = 0;
                     char *requestingUserId = receivedMsg.payload;
                     
+                    // Procura o usuario no database e checa suas permissoes
                     for(int i = 0; i < peerConn->userServer->userCount; i++) {
                         if(strcmp(peerConn->userServer->userDatabase[i], requestingUserId) == 0) {
                             isSpecial = peerConn->userServer->specialPermissions[i];
@@ -295,7 +248,7 @@ void *handlePeerConnection(void *arg) {
                         }
                     }
                     
-                    // Send response with just the permission status
+                    // Resposta com o status de permissao
                     char response[BUFSIZE];
                     snprintf(response, BUFSIZE, "%d", isSpecial);
                     setMessage(&sendMsg, RES_USRAUTH, response);
@@ -304,7 +257,7 @@ void *handlePeerConnection(void *arg) {
                 break;
 
                 case OK:
-                    if (strcmp(receivedMsg.payload, "01") == 0) {
+                    if (strcmp(receivedMsg.payload, "01") == 0) { // Desconexao bem sucedida
                         printf("%s\n", returnOkMessage(&receivedMsg));
                         printf("Peer %d disconnected\n", peerConn->theirId);
                         close(peerConn->socket);
@@ -313,18 +266,18 @@ void *handlePeerConnection(void *arg) {
                 break;
 
                 default:
-                    // Handle other message types if needed
-                    break;
+                break;
             }
         }
     }
     return NULL;
 }
 
+// Thread para observar a entrada no terminal dos servers
 void *handleServerStdin(void *arg) {
     PeerConnection *peerConn = (PeerConnection *)arg;
     char input[BUFSIZE];
-    Message sendMsg;
+    Message sentMessage;
 
     while (1) {
         if (fgets(input, BUFSIZE - 1, stdin) == NULL) {
@@ -332,18 +285,18 @@ void *handleServerStdin(void *arg) {
         }
         input[strcspn(input, "\n")] = 0;
 
+        // Trata do comando kill do servidor
         if (strcmp(input, "kill") == 0) {
-            if (peerConn->isConnected) {
+            if (peerConn->isConnected) { // Se o peer esta conectado
                 char pidStr[10];
                 snprintf(pidStr, sizeof(pidStr), "%d", peerConn->myId);
-                setMessage(&sendMsg, REQ_DISCPEER, pidStr);
-                send(peerConn->socket, &sendMsg, sizeof(Message), 0);
+                setMessage(&sentMessage, REQ_DISCPEER, pidStr);
+                send(peerConn->socket, &sentMessage, sizeof(Message), 0); // Mensagem de desconectar com Pid
                 
-                // Wait for response
                 Message recvMsg;
                 recv(peerConn->socket, &recvMsg, sizeof(Message), 0);
                 
-                if (recvMsg.type == OK && strcmp(recvMsg.payload, "01") == 0) {
+                if (recvMsg.type == OK && strcmp(recvMsg.payload, "01") == 0) { 
                     printf("%s\n", returnOkMessage(&recvMsg));
                     printf("Peer %d disconnected\n", peerConn->theirId);
                     peerConn->otherPeerConnected = 0;
@@ -358,9 +311,12 @@ void *handleServerStdin(void *arg) {
     return NULL;
 }
 
+// Thread para gerenciar as mensagens recebidas dos clientes
 void *handleClientMessages(void *arg) {
     ClientThreadParams *params = (ClientThreadParams *)arg;
-    Message receivedMsg, responseMsg;
+    Message receivedMsg, responseMsg, locResponse, authRequest, authResponse;
+    char userId[11], direction[4], locId[10], newPayload[BUFSIZE], userList[BUFSIZE];
+    int isSpecial, targetLoc, first;
     
     while (1) {
         int bytesReceived = recv(params->client_sock, &receivedMsg, sizeof(Message), 0);
@@ -368,88 +324,84 @@ void *handleClientMessages(void *arg) {
             break;
         }
 
-        // For REQ_USRACCESS messages, modify payload to include locationId
-        if (receivedMsg.type == REQ_USRACCESS) {
-            char userId[11], direction[4];
-            char newPayload[BUFSIZE];
-            sscanf(receivedMsg.payload, "%s %s", userId, direction);
-            
-            // Add locationId to the payload: format is now "userId direction locationId"
-            snprintf(newPayload, BUFSIZE, "%s %s %d", userId, direction, params->locationId);
-            strcpy(receivedMsg.payload, newPayload);
-        }
+        switch(receivedMsg.type) {
+            case REQ_USRACCESS:
+                // Adiciona locationId no payload
+                sscanf(receivedMsg.payload, "%s %s", userId, direction);
+                snprintf(newPayload, BUFSIZE, "%s %s %d", userId, direction, params->locationId);
+                strcpy(receivedMsg.payload, newPayload);
 
-        // Process client command
-        computeCommand(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
-        
-        // If it's an access request and not an error, forward to peer
-        if (receivedMsg.type == REQ_USRACCESS && responseMsg.type != ERROR) {
-            if (params->peerConn->isConnected) {
-                // Forward the REQ_LOCREG to location server
-                send(params->peerConn->socket, &responseMsg, sizeof(Message), 0);
+                // Processa comando e gera mensagem de resposta
+                computeCommand(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
                 
-                // Wait for response from location server
-                Message locResponse;
-                recv(params->peerConn->socket, &locResponse, sizeof(Message), 0);
-                
-                // Convert to RES_USRACCESS and send to client
-                setMessage(&responseMsg, RES_USRACCESS, locResponse.payload);
-            }
-        }
-
-        if (receivedMsg.type == REQ_LOCLIST && params->locationServer != NULL) {
-            // We're in the Location Server, need to check authorization with User Server
-            if (params->peerConn->isConnected) {
-                // Extract userId from the original request
-                char userId[11], locId[10];
-                sscanf(receivedMsg.payload, "%s %s", userId, locId);
-                
-                // Create new auth request message
-                Message authRequest;
-                setMessage(&authRequest, REQ_USRAUTH, userId);
-                
-                // Send auth request to User Server
-                send(params->peerConn->socket, &authRequest, sizeof(Message), 0);
-                
-                // Wait for response from User Server
-                Message authResponse;
-                recv(params->peerConn->socket, &authResponse, sizeof(Message), 0);
-                
-                if (authResponse.type == RES_USRAUTH) {
-                    int isSpecial = atoi(authResponse.payload);
-                    if (!isSpecial) {
-                        setMessage(&responseMsg, ERROR, "19");  // Permission denied
-                    } else {
-                        // User is authorized, prepare list of users
-                        char userList[BUFSIZE] = "";
-                        int first = 1;
-                        int targetLoc = atoi(locId);
-                        
-                        for (int i = 0; i < params->locationServer->userCount; i++) {
-                            if (params->locationServer->lastLocationSeen[i] == targetLoc) {
-                                if (!first) {
-                                    strcat(userList, ", ");
-                                }
-                                strcat(userList, params->locationServer->locationUserDatabase[i]);
-                                first = 0;
-                            }
-                        }
-                        
-                        setMessage(&responseMsg, RES_LOCLIST, userList);
-                    }
+                if (responseMsg.type != ERROR && params->peerConn->isConnected) {
+                    // Encaminha REQ_LOCREG para servidor de localização
+                    send(params->peerConn->socket, &responseMsg, sizeof(Message), 0);
+                    
+                    // Aguarda e processa resposta do SL
+                    recv(params->peerConn->socket, &locResponse, sizeof(Message), 0);
+                    setMessage(&responseMsg, RES_USRACCESS, locResponse.payload);
                 }
-            }
-        }
-        
-        // Send response to client
-        send(params->client_sock, &responseMsg, sizeof(Message), 0);
+                break;
 
-        if (receivedMsg.type == EXIT || receivedMsg.type == REQ_DISC) {
-            if (receivedMsg.type == REQ_DISC) {
-                usleep(100000);  // Small delay to ensure response is sent
-            }
+            case REQ_LOCLIST:
+                // Verifica se esta no servidor de localizacao
+                if (params->locationServer != NULL && params->peerConn->isConnected) {
+                    sscanf(receivedMsg.payload, "%s %s", userId, locId);
+                    
+                    setMessage(&authRequest, REQ_USRAUTH, userId); // Prepara e envia pedido de autorização
+                    send(params->peerConn->socket, &authRequest, sizeof(Message), 0);
+                    
+                    // Recebe resposta de autorizacao
+                    recv(params->peerConn->socket, &authResponse, sizeof(Message), 0);
+                    
+                    if (authResponse.type == RES_USRAUTH) {
+                        isSpecial = atoi(authResponse.payload);
+                        if (!isSpecial) {
+                            setMessage(&responseMsg, ERROR, "19");  // Usuário sem permissão
+                        } else {
+                            // Prepara lista de usuários na localização
+                            memset(userList, 0, BUFSIZE);
+                            first = 1;
+                            targetLoc = atoi(locId);
+                            
+                            for (int i = 0; i < params->locationServer->userCount; i++) {
+                                if (params->locationServer->lastLocationSeen[i] == targetLoc) {
+                                    if (!first) {
+                                        strcat(userList, ", ");
+                                    }
+                                    strcat(userList, params->locationServer->locationUserDatabase[i]);
+                                    first = 0;
+                                }
+                            }
+                            
+                            setMessage(&responseMsg, RES_LOCLIST, userList); // Mensagem de resposta com a lista de users
+                        }
+                    }
+                } else {
+                    // Processa normalmente se não estiver no servidor de localização
+                    computeCommand(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
+                }
+                break;
+
+            case REQ_DISC:
+                //Saida do cliente
+                computeCommand(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
+                send(params->client_sock, &responseMsg, sizeof(Message), 0);
+
+                //Limpa parametros dos clientes
+                close(params->client_sock);
+                free(params);
+                return NULL;
+
+            default:
+                // Processa outros tipos de mensagens normalmente
+                computeCommand(params->userServer, params->locationServer, &responseMsg, &receivedMsg);
             break;
         }
+        
+        // Envia resposta final para o cliente
+        send(params->client_sock, &responseMsg, sizeof(Message), 0);
     }
 
     close(params->client_sock);
@@ -457,13 +409,12 @@ void *handleClientMessages(void *arg) {
     return NULL;
 }
 
+// Procura user no servidor de localizaçao e prepara a mensagem de resposta
 void findUser(LocationServer *server, Message *message, char* userId) {
     int userIndex = -1;
     char payload[BUFSIZE];
 
     printf("REQ_USRLOC %s\n", userId);
-
-    // Search for user in the database
     for(int i = 0; i < server->userCount; i++) {
         if(strncmp(server->locationUserDatabase[i], userId, 10) == 0) {
             userIndex = i;
@@ -476,7 +427,6 @@ void findUser(LocationServer *server, Message *message, char* userId) {
         return;
     }
 
-    // User found - format location response
     snprintf(payload, BUFSIZE, "%d", server->lastLocationSeen[userIndex]);
     setMessage(message, RES_USRLOC, payload);
 }
@@ -553,26 +503,26 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int c
 }
 
 
-// Computar resposta do user
+// Funcao auxiliar dos servidores para atuar nas mensagens recebidas dos clientes
 void computeCommand(UserServer *userServer, LocationServer *locationServer, Message *message, Message *receivedData) {
     char responsePayload[BUFSIZE] = {0};
     char userId[11] = {0};
     
     switch(receivedData->type){
         case REQ_CONN:
-            // Check if we can accept more clients (max 10)
-            if (userServer && userServer->clientCount >= 10) {
+            // Checa se os servers atingiram o limite de usuarios
+            if (userServer && userServer->clientCount >= MAX_CLIENTS) {
                 printf("Client limit exceeded\n");
                 setMessage(message, ERROR, "09");  // Client limit exceeded
                 return;
             }
-            if (locationServer && locationServer->clientCount >= 10) {
+            if (locationServer && locationServer->clientCount >= MAX_CLIENTS) {
                 printf("Client limit exceeded\n");
                 setMessage(message, ERROR, "09");  // Client limit exceeded
                 return;
             }
             
-            // Generate a client ID (for demonstration, using current count + 1)
+            // Gera o ID do cliente para cada servidor
             int newClientId;
             if (userServer) {
                 newClientId = userServer->clientCount + 1;
@@ -584,19 +534,20 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
                 printf("Client %d added (Loc %s)\n", newClientId, receivedData->payload);
             }
             
-            // Send back the client ID
+            // Retorna para o cliente seu Id
             snprintf(responsePayload, BUFSIZE, "%d", newClientId);
             setMessage(message, RES_CONN, responsePayload);
         break;
 
         case REQ_USRADD: {
+            // Adicionar usuarios na database
             printf("REQ_USRADD %s\n", receivedData->payload);
             
             char userId[11];
             int isSpecial;
             sscanf(receivedData->payload, "%s %d", userId, &isSpecial);
             
-            // Search for existing user
+            // Procura se o usuario existe
             int userIndex = -1;
             for(int i = 0; i < userServer->userCount; i++) {
                 if(strncmp(userServer->userDatabase[i], userId, 10) == 0) {
@@ -605,17 +556,15 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
                 }
             }
             
-            if (userIndex != -1) {
-                // Update existing user
+            if (userIndex != -1) { // Se existe, atualiza sua permissao
                 userServer->specialPermissions[userIndex] = isSpecial;
                 char payload[BUFSIZE];
                 snprintf(payload, BUFSIZE, "03 %s", userId);
                 setMessage(message, OK, payload);
             } else if (userServer->userCount >= MAX_USERS) {
-                // User limit exceeded
-                setMessage(message, ERROR, "17");
+                setMessage(message, ERROR, "17"); // Atingiu o limite de users
             } else {
-                // Add new user
+                // Adiciona o novo usuario
                 strncpy(userServer->userDatabase[userServer->userCount], userId, 10);
                 userServer->userDatabase[userServer->userCount][10] = '\0';
                 userServer->specialPermissions[userServer->userCount] = isSpecial;
@@ -634,7 +583,7 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             
             printf("REQ_USRACCESS %s %s\n", userId, direction);
             
-            // Check if user exists
+            // Checa se o usuario existe
             int userFound = 0;
             for(int i = 0; i < userServer->userCount; i++) {
                 if(strncmp(userServer->userDatabase[i], userId, 10) == 0) {
@@ -644,15 +593,14 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             }
             
             if(!userFound) {
-                setMessage(message, ERROR, "18");
+                setMessage(message, ERROR, "18"); // Erro: usuario nao encontrado
                 return;
             }
-            
-            // Create payload for location server
+
             char locRegPayload[BUFSIZE];
-            if (strcmp(direction, "out") == 0) {
+            if (strcmp(direction, "out") == 0) { // User saindo, nova localizacao -1
                 snprintf(locRegPayload, BUFSIZE, "%s %d", userId, -1);
-            } else {
+            } else { //User entrando, envia localizacao
                 snprintf(locRegPayload, BUFSIZE, "%s %d", userId, locationId);
             }
             
@@ -666,37 +614,37 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             sscanf(receivedData->payload, "%s %d", userId, &newLoc);
             printf("REQ_LOCREG %s %d\n", userId, newLoc);
 
-            // Find if user exists in location database
             int userIndex = -1;
             int oldLoc = -1;
             
+            // Procura usuario na database
             for(int i = 0; i < locationServer->userCount; i++) {
                 if(strncmp(locationServer->locationUserDatabase[i], userId, 10) == 0) {
                     userIndex = i;
                     oldLoc = locationServer->lastLocationSeen[i];
-                    locationServer->lastLocationSeen[i] = newLoc;  // Update to new location
+                    locationServer->lastLocationSeen[i] = newLoc;  // Atualiza nova localizacao
                     break;
                 }
             }
 
-            // If user not found, add them
+            // Se usuario nao esta na database de localizacao adiciona
             if(userIndex == -1) {
                 userIndex = locationServer->userCount;
                 strncpy(locationServer->locationUserDatabase[userIndex], userId, 10);
                 locationServer->locationUserDatabase[userIndex][10] = '\0';
-                oldLoc = -1;  // First time seeing this user
+                oldLoc = -1;  // Primeira localizacao
                 locationServer->lastLocationSeen[userIndex] = newLoc;
                 locationServer->userCount++;
             }
 
-            // Send response with old location
+            // Envia mensagem com a localizacao antiga
             char responsePayload[BUFSIZE];
             snprintf(responsePayload, BUFSIZE, "%d", oldLoc);
             setMessage(message, RES_LOCREG, responsePayload);
         }
         break;
 
-        case RES_LOCREG:
+        case RES_LOCREG: //checa o acesso do usuario 
             setMessage(message, RES_USRACCESS, receivedData->payload);
         break;
 
@@ -705,7 +653,7 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             sscanf(receivedData->payload, "%s %s", userId, locId);
             
             printf("REQ_LOCLIST %s %s\n", userId, locId);
-            setMessage(message, REQ_USRAUTH, userId);
+            setMessage(message, REQ_USRAUTH, userId); // Mensagem para checar pemissao do usuario
         }
         break;
 
@@ -715,9 +663,9 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             int isSpecial = atoi(permission);
             
             if (!isSpecial) {
-                setMessage(message, ERROR, "19");  // Permission denied
+                setMessage(message, ERROR, "19");  // Sem pemissao
             } else {
-                // User has permission, gather users at location
+                // Se user tem permissao, seleciona todos da localizacao
                 char userList[BUFSIZE] = "";
                 int first = 1;
                 int targetLoc = atoi(locId);
@@ -739,14 +687,14 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
 
         case REQ_USRLOC:
             sscanf(receivedData->payload, "%s", userId);
-            findUser(locationServer, message, userId);
+            findUser(locationServer, message, userId); // Procura usuario e seta a mensagem
         break;
 		
 		case REQ_DISC:
             int clientId = atoi(receivedData->payload);
             int clientFound = 0;
             
-            // Check if client exists in server's database
+            // Checa se o cliente existe na database e remove
             if (userServer && clientId <= userServer->clientCount) {
                 clientFound = 1;
                 userServer->clientCount--;
@@ -760,7 +708,7 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             }
 
             if (!clientFound) {
-                setMessage(message, ERROR, "10");
+                setMessage(message, ERROR, "10"); // Cliente nao encontrado
             }
         break;
         
@@ -770,34 +718,34 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
     }
 }
 
-//Confere os dados recebidos e realiza acoes para o cliente
+// Realiza as acoes finais para o cliente
 void handleReceivedData(struct Message* receivedData, int sock, int serverType) {
     switch(receivedData->type) {
         static char lastUserId[11] = {0};
 
-        case RES_CONN:
+        case RES_CONN: // Conexao ao servidor
             printf("New ID: %s\n", receivedData->payload);
-            break;
+        break;
 
-        case REQ_USRADD:
+        case REQ_USRADD: // Resposta do comando 'add'
             sscanf(receivedData->payload, "%s", lastUserId);
             puts(receivedData->payload); 
         break;
 
-        case RES_USRACCESS:
+        case RES_USRACCESS: // Resposta do comando 'in/out'
             int lastLoc = atoi(receivedData->payload);
             printf("Ok. Last location: %d\n", lastLoc);
         break;
 
-        case RES_USRLOC:
+        case RES_USRLOC: // Resposta do comando 'find'
             printf("Current location: %s\n", receivedData->payload);
         break;
 
-        case RES_LOCLIST:
+        case RES_LOCLIST: // Resposta do comando 'inspect'
             printf("List of people at the specified location: %s\n", receivedData->payload);
         break;
 
-        case ERROR:
+        case ERROR: // Resposta as mensagens de erros
             puts(returnErrorMessage(receivedData));
         break;
 
@@ -807,12 +755,12 @@ void handleReceivedData(struct Message* receivedData, int sock, int serverType) 
             sscanf(receivedData->payload, "%s %s", code, userId);
             
             if (strcmp(code, "02") == 0) {
-                printf("New user added: %s\n", userId);
+                printf("New user added: %s\n", userId); // Usuario adicionado
             } 
             else if (strcmp(code, "03") == 0) {
-                printf("User updated: %s\n", userId);
+                printf("User updated: %s\n", userId); // Quando atualiza a permissao do usuario
             } 
-            else if (strcmp(code, "01") == 0) {
+            else if (strcmp(code, "01") == 0) { // Mensagens quando desconecta dos servers
                 if (serverType == 0) {
                     printf("SU Successful disconnect\n");
                 } else {
@@ -822,13 +770,26 @@ void handleReceivedData(struct Message* receivedData, int sock, int serverType) 
         }
         break;
 
-        case EXIT:
-            close(sock);
-            exit(0);
-        break;
-
-        default:
+        default: // Mensagem invalida
             puts("Invalid received message type");
         break;
     }
+}
+
+char* returnErrorMessage(Message *message){
+	if(strcmp(message->payload,"01")==0) return "Peer limit excedeed";
+	if(strcmp(message->payload,"02")==0) return "Peer not found";
+	if(strcmp(message->payload,"09")==0) return "Client limit exceeded";
+	if(strcmp(message->payload,"10")==0) return "Client not found";
+	if(strcmp(message->payload,"17")==0) return "User limit exceeded";
+	if(strcmp(message->payload,"18")==0) return "User not found";
+	if(strcmp(message->payload,"19")==0) return "Permission denied";
+    return "";
+}
+
+char* returnOkMessage(Message *message){
+	if(strcmp(message->payload,"01")==0) return "Successful disconnect";
+	if(strcmp(message->payload,"02")==0) return "Successful create";
+	if(strcmp(message->payload,"03")==0) return "Successful update";
+    return "";
 }

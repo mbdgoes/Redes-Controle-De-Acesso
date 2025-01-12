@@ -14,9 +14,10 @@
 #include <sys/select.h>
 
 //================ CONSTANTES ====================
-#define BUFSIZE       500
-#define MAX_USERS     30
-#define USER_SERVER_PORT 50000
+#define BUFSIZE              500
+#define MAX_USERS            30
+#define MAX_CLIENTS          10
+#define USER_SERVER_PORT     50000
 #define LOCATION_SERVER_PORT 60000
 
 #define EXIT          -1
@@ -43,46 +44,47 @@
 #define OK            0
 
 //============ STRUCTS =============================
+
+// Estrutura basica de mensagem
 typedef struct Message {
     int type;          
     size_t size;
     char payload[BUFSIZE]; // Payload fixo (máximo de 500 bytes)
 } Message;
 
+// Mantem o estado do server de Usuario
 typedef struct UserServer {
-    char userDatabase[100][11];
-    int specialPermissions[100];
+    char userDatabase[100][11];   // Database de Ids dos usuarios
+    int specialPermissions[100];  // IS_SPECIAL de cada user
     int userCount;
     int clientCount;
 } UserServer;
 
+// Mantem o estado do server de Localizacao
 typedef struct LocationServer {
-    char locationUserDatabase[100][11];
-    int lastLocationSeen[100];
+    char locationUserDatabase[100][11]; // Database de Ids dos usuarios
+    int lastLocationSeen[100];          // Ultima localizacao de cada user
     int userCount;
     int clientCount;
 } LocationServer;
 
-typedef struct {
+// Parametros do estado da conexao dos peers
+typedef struct PeerConnection{
     int peerId;
     int socket;
     int isConnected;
     int port;
-    int isInitiator;       
-    int hasExchangedIds;   
-    int myId;              
-    int theirId;           
+    int isInitiator;                // Flag para indicar server que inicia conexao
+    int hasExchangedIds;            // Flag que indica se os servers ja trocaram os Ids
+    int myId;
+    int theirId;
     int otherPeerConnected;
-    UserServer *userServer;
-    LocationServer *locationServer;
+    UserServer *userServer;         // Preenchido se o server é o server de usuários
+    LocationServer *locationServer; // Preenchido se o server é o server de localizacao
 } PeerConnection;
 
-typedef struct {
-    int peerCount;
-    PeerConnection peer;
-} ServerState;
-
-typedef struct {
+// Armazena as informacoes dos clientes para a thread de clientes 
+typedef struct ClientThreadParams{
     int client_sock;
     PeerConnection *peerConn;
     UserServer *userServer;
@@ -90,7 +92,8 @@ typedef struct {
     int locationId;
 } ClientThreadParams;
 
-typedef struct {
+// Estado atual do cliente
+typedef struct ClientState{
     int clientId;
     int locationId;
     int isInitialized;

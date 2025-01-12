@@ -54,7 +54,7 @@ int setupClientServerSocket(int clientPort) {
     return clientServerSock;
 }
 
-//Preenche as flags da struct de controle de acordo com o necessario
+// Preenche as flags da struct de controle de acordo com o necessario
 void initializePeerConnection(PeerConnection *peerConn, int peerPort, int clientPort, 
                                    UserServer *userServer, LocationServer *locationServer) {
     peerConn->peerId = -1;
@@ -75,6 +75,35 @@ void initializePeerConnection(PeerConnection *peerConn, int peerPort, int client
     } else if (clientPort == LOCATION_SERVER_PORT) {
         peerConn->locationServer = locationServer;
     }
+}
+
+// Conexao com o peer
+int establishPeerConnection(const char* serverAddress, int port, PeerConnection *peerConn) {
+    struct sockaddr_in6 server_addr = {0};
+    int sock = socket(AF_INET6, SOCK_STREAM, 0);
+    
+    if (sock < 0) {
+        perror("Socket creation failed");
+        return -1;
+    }
+
+    int enableDualStack = 0;
+    setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &enableDualStack, sizeof(enableDualStack));
+
+    server_addr.sin6_family = AF_INET6;
+    server_addr.sin6_port = htons(port);
+    inet_pton(AF_INET6, "::1", &server_addr.sin6_addr);
+
+    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == 0) {
+        peerConn->socket = sock;
+        peerConn->isConnected = 1;
+        peerConn->isInitiator = 1;
+        peerConn->hasExchangedIds = 0;
+        return sock;
+    }
+
+    close(sock);
+    return -1;
 }
 
 int main(int argc, char *argv[]) {
