@@ -43,7 +43,7 @@ void setMessage(Message *message, int type, char* payload) {
     if(payloadLen >= BUFSIZE) {
         payloadLen = BUFSIZE - 1;
     }
-    memset(message->payload, 0, BUFSIZE);  // Clear the payload buffer
+    memset(message->payload, 0, BUFSIZE);  // Limpa o payload
     memcpy(message->payload, payload, payloadLen);
     message->size = payloadLen;
 }
@@ -458,7 +458,8 @@ void *handleClientMessages(void *arg) {
                 // Verifica se esta no servidor de localizacao
                 if (params->locationServer != NULL && params->peerConn->isConnected) {
                     sscanf(receivedMsg.payload, "%s %s", userId, locId);
-                    
+
+                    printf("REQ_LOCLIST %s %s\n", userId, locId);
                     setMessage(&authRequest, REQ_USRAUTH, userId); // Prepara e envia pedido de autorização
                     send(params->peerConn->socket, &authRequest, sizeof(Message), 0);
                     
