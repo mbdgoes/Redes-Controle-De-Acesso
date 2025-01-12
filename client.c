@@ -95,27 +95,27 @@ int main(int argc, char *argv[]) {
 
             int error = 0;
             memset(&sentMessage, 0, sizeof(Message));
-            computeInput(&sentMessage, command, &error, clientState.clientId); // Cria a mensagem que vai ser enviada
+            computeInput(&sentMessage, command, &error, clientState.clientIds); // Cria a mensagem que vai ser enviada
 
             if (error) {
                 printf("Error processing command\n");
                 continue;
             }
             
-            // Mensagem de disconexao vai para os dois servidores
+            // Mensagem de desconexao vai para os dois servidores
             if (sentMessage.type == REQ_DISC) {
-                if (send(userSock, &sentMessage, sizeof(Message), 0) < 0 ||
-                    send(locationSock, &sentMessage, sizeof(Message), 0) < 0) {
-                    perror("Failed to send disconnect request");
-                    break;
-                }
+                // Mensagem de desconexao do servidor de usuario
+                snprintf(sentMessage.payload, BUFSIZE, "%d", clientState.clientIds[0]);
+                send(userSock, &sentMessage, sizeof(Message), 0);
 
-                // Espera a resposta dos dois servers
+                // Mensagem de desconexao do servidor de localizacao
+                snprintf(sentMessage.payload, BUFSIZE, "%d", clientState.clientIds[1]);
+                send(locationSock, &sentMessage, sizeof(Message), 0);
+
+                // Respostas de disconnect
                 Message userResponse, locResponse;
                 recv(userSock, &userResponse, sizeof(Message), 0);
                 recv(locationSock, &locResponse, sizeof(Message), 0);
-
-                // Respostas de disconnect
                 handleReceivedData(&userResponse, userSock, 0);
                 handleReceivedData(&locResponse, locationSock, 1);
                 close(userSock);

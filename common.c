@@ -67,7 +67,8 @@ void setMessage(Message *message, int type, char* payload) {
 }
 
 void initializeClient(ClientState *state, int locationId) {
-    state->clientId = -1;
+    state->clientIds[0] = -1;  // ID do server de usuario
+    state->clientIds[1] = -1;  // ID do server de localizacao
     state->locationId = locationId;
     state->isInitialized = 0;
     state->hasUserServerId = 0;
@@ -85,14 +86,15 @@ void handleConnectionResponse(Message *message, ClientState *state, int serverTy
         
         if (serverType == 0) { // User Server
             state->hasUserServerId = 1;
+            state->clientIds[0] = assignedId;
             printf("SU New ID: %d\n", assignedId);
         } else { // Location Server
             state->hasLocServerId = 1;
+            state->clientIds[1] = assignedId;
             printf("SL New ID: %d\n", assignedId);
         }
         if (state->hasUserServerId && state->hasLocServerId) {
             state->isInitialized = 1;
-            state->clientId = assignedId;
         }
     }
 }
@@ -431,8 +433,8 @@ void findUser(LocationServer *server, Message *message, char* userId) {
     setMessage(message, RES_USRLOC, payload);
 }
 
-//Faz o parsing do input do cliente
-void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int clientId) {
+//Faz o parsing do input do cliente no terminal
+void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int* clientIds) {
     char *inputs[BUFSIZE];
     char *token = strtok(command, " ");
     int count = 0;
@@ -443,17 +445,17 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int c
         return;
     }
 
-    // Tokenize the commands
+    // Tokenizar a mensagem
     while (token != NULL && count < BUFSIZE) {
         inputs[count++] = token;
         token = strtok(NULL, " ");
     }
 
-    memset(sentMessage, 0, sizeof(Message));  // Clear the message structure
-
+    memset(sentMessage, 0, sizeof(Message));
+    // Prepara as mensagens que serao enviadas para o servidor de acordo com o input
     if (strcmp(inputs[0], "kill") == 0) {
         char payload[BUFSIZE];
-        snprintf(payload, BUFSIZE, "%d", clientId);
+        snprintf(payload, BUFSIZE, "%d", clientIds[0]);
         setMessage(sentMessage, REQ_DISC, payload);
     }
     else if (strcmp(inputs[0], "add") == 0) {
@@ -476,10 +478,6 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int c
         snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[0]);
         setMessage(sentMessage, REQ_USRACCESS, payload);
     }
-    else if (strcmp(inputs[0], "exit") == 0) {
-        char nullPayload[BUFSIZE] = {0};
-        setMessage(sentMessage, EXIT, nullPayload);
-    }
     else if (strcmp(inputs[0], "find") == 0) {
         if (count < 2) {
             *error = 1;
@@ -500,6 +498,25 @@ void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int c
         *error = 1;
         fputs("error: command not found\n", stdout);
     }
+}
+
+int generateUniqueClientId(int* clientIds, int clientCount) {
+    int newClientId;
+    while (1) {
+        newClientId = (rand() % 1000) + 1;  // Gera Id entre 1 e 1000
+        int idExists = 0;
+        
+        // Check if this ID already exists
+        for (int i = 0; i < clientCount; i++) {
+            if (clientIds[i] == newClientId) {
+                idExists = 1;
+                break;
+            }
+        }
+        
+        if (!idExists) break;
+    }
+    return newClientId;
 }
 
 
@@ -525,11 +542,13 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             // Gera o ID do cliente para cada servidor
             int newClientId;
             if (userServer) {
-                newClientId = userServer->clientCount + 1;
+                newClientId = generateUniqueClientId(userServer->clientIds, userServer->clientCount);
+                userServer->clientIds[userServer->clientCount] = newClientId;
                 userServer->clientCount++;
                 printf("Client %d added (Loc %s)\n", newClientId, receivedData->payload);
             } else if (locationServer) {
-                newClientId = locationServer->clientCount + 1;
+                newClientId = generateUniqueClientId(locationServer->clientIds, locationServer->clientCount);
+                locationServer->clientIds[locationServer->clientCount] = newClientId;
                 locationServer->clientCount++;
                 printf("Client %d added (Loc %s)\n", newClientId, receivedData->payload);
             }
@@ -695,19 +714,35 @@ void computeCommand(UserServer *userServer, LocationServer *locationServer, Mess
             int clientFound = 0;
             
             // Checa se o cliente existe na database e remove
-            if (userServer && clientId <= userServer->clientCount) {
-                clientFound = 1;
-                userServer->clientCount--;
-                printf("Client %d removed\n", clientId);
-                setMessage(message, OK, "01");
-            } else if (locationServer && clientId <= locationServer->clientCount) {
-                clientFound = 1;
-                locationServer->clientCount--;
-                printf("Client %d removed\n", clientId);
-                setMessage(message, OK, "01");
+            if (userServer) {
+                for (int i = 0; i < userServer->clientCount; i++){
+                    if (userServer->clientIds[i] == clientId) { // Checa se o ID corresponde na database
+                        clientFound = 1;
+                        for (int j = i; j < userServer->clientCount - 1; j++) {
+                            userServer->clientIds[j] = userServer->clientIds[j + 1];
+                        }
+                        userServer->clientCount--;
+                        printf("Client %d removed\n", clientId);
+                        break;
+                    }
+                }
+            } else if (locationServer) { // Se server de localizacao remove o cliente da sua database
+                for (int i = 0; i < locationServer->clientCount; i++) {
+                    if (locationServer->clientIds[i] == clientId) {
+                        clientFound = 1;
+                        for (int j = i; j < locationServer->clientCount - 1; j++) {
+                            locationServer->clientIds[j] = locationServer->clientIds[j + 1];
+                        }
+                        locationServer->clientCount--;
+                        printf("Client %d removed\n", clientId);
+                        break;
+                    }
+                }
             }
 
-            if (!clientFound) {
+            if (clientFound) {
+                setMessage(message, OK, "01");
+            }else{
                 setMessage(message, ERROR, "10"); // Cliente nao encontrado
             }
         break;

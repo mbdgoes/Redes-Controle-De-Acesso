@@ -20,7 +20,6 @@
 #define USER_SERVER_PORT     50000
 #define LOCATION_SERVER_PORT 60000
 
-#define EXIT          -1
 #define REQ_CONNPEER  17
 #define RES_CONNPEER  18
 #define REQ_DISCPEER  19
@@ -58,6 +57,7 @@ typedef struct UserServer {
     int specialPermissions[100];  // IS_SPECIAL de cada user
     int userCount;
     int clientCount;
+    int clientIds[MAX_CLIENTS];
 } UserServer;
 
 // Mantem o estado do server de Localizacao
@@ -66,6 +66,7 @@ typedef struct LocationServer {
     int lastLocationSeen[100];          // Ultima localizacao de cada user
     int userCount;
     int clientCount;
+    int clientIds[MAX_CLIENTS];
 } LocationServer;
 
 // Parametros do estado da conexao dos peers
@@ -94,7 +95,7 @@ typedef struct ClientThreadParams{
 
 // Estado atual do cliente
 typedef struct ClientState{
-    int clientId;
+    int clientIds[2];
     int locationId;
     int isInitialized;
     int hasUserServerId;
@@ -111,7 +112,7 @@ char* returnOkMessage(Message *message);
 
 //============= FUNCOES DE CLIENTE ====================
 void initializeClient(ClientState *state, int locationId);
-void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int clientId);
+void computeInput(Message *sentMessage, char command[BUFSIZE], int* error, int* clientIds);
 void handleConnectionResponse(Message *message, ClientState *state, int serverType);
 void handleReceivedData(struct Message* receivedData, int sock, int serverType);
 int validateLocationId(int locationId);
@@ -119,6 +120,7 @@ int validateLocationId(int locationId);
 //============= FUNCOES DE SERVIDOR  ==================
 void findUser(LocationServer *locationServer, Message *message, char* userId);
 int establishPeerConnection(const char* serverAddress, int port, PeerConnection *peerConn);
+int generateUniqueClientId(int* clientIds, int clientCount);
 void *handlePeerConnection(void *arg);
 void *handleServerStdin(void *arg);
 void *handleClientMessages(void *arg);
