@@ -17,6 +17,8 @@
 #define BUFSIZE              500
 #define MAX_USERS            30
 #define MAX_CLIENTS          10
+#define USER_SERVER          0
+#define LOCATION_SERVER      1
 #define USER_SERVER_PORT     50000
 #define LOCATION_SERVER_PORT 60000
 
@@ -104,7 +106,6 @@ typedef struct ClientState{
 
 
 //============ FUNCOES DE REDE =======================
-int initServerSockaddr(const char *proto, const char *portstr, struct sockaddr_storage *storage);
 int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage);
 void setMessage(Message *message, int type, char* payload);
 char* returnErrorMessage(Message *message);
@@ -112,18 +113,17 @@ char* returnOkMessage(Message *message);
 
 //============= FUNCOES DE CLIENTE ====================
 void initializeClient(ClientState *state, int locationId);
-void parseUserCommand(Message *sentMessage, char command[BUFSIZE], int* error, int* clientIds);
-void handleConnectionResponse(Message *message, ClientState *state, int serverType);
-void handleReceivedData(struct Message* receivedData, int sock, int serverType);
 int validateLocationId(int locationId);
+void handleConnectionResponse(Message *message, ClientState *state, int serverType);
+void parseUserCommand(Message *sentMessage, char command[BUFSIZE], int* error, int* clientIds);
+void handleReceivedData(struct Message* receivedData, int serverType);
 
 //============= FUNCOES DE SERVIDOR  ==================
-void findUser(LocationServer *locationServer, Message *message, char* userId);
-int establishPeerConnection(const char* serverAddress, int port, PeerConnection *peerConn);
-int generateUniqueClientId(int* clientIds, int clientCount);
 void *handlePeerConnection(void *arg);
 void *handleServerStdin(void *arg);
 void *handleClientMessages(void *arg);
 void processServerMessage(UserServer *userServer, LocationServer *LocationServer, Message *action, Message *receivedData);
+void findUser(LocationServer *locationServer, Message *message, char* userId);
+int generateClientId(int* clientIds, int clientCount);
 
 #endif

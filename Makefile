@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS  =
+CFLAGS  = -Wextra -Wall
 
 all: client server
 

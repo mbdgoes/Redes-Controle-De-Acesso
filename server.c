@@ -78,7 +78,7 @@ void initializePeerConnection(PeerConnection *peerConn, int peerPort, int client
 }
 
 // Conexao com o peer
-int establishPeerConnection(const char* serverAddress, int port, PeerConnection *peerConn) {
+int establishPeerConnection(int port, PeerConnection *peerConn) {
     struct sockaddr_in6 server_addr = {0};
     int sock = socket(AF_INET6, SOCK_STREAM, 0);
     
@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
     initializePeerConnection(&peerConn, peerPort, clientPort, &userServer, &locationServer);
 
     int peerServerSock = -1;
-    int peerSock = establishPeerConnection("::1", peerPort, &peerConn); //Tenta conectar com o peer
+    int peerSock = establishPeerConnection(peerPort, &peerConn); //Tenta conectar com o peer
     
     if (peerSock < 0) {// Se nao existe o peer, o server passa a escutar novas conexoes
         peerServerSock = setupPeerServerSocket(peerPort);

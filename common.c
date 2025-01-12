@@ -1,23 +1,5 @@
 #include "common.h"
 
-//Inicializa a estrutura do endereco com base no protocolo e na porta especificado
-int initServerSockaddr(const char *serverPortStr, const char *clientPortStr, struct sockaddr_storage *storage) {
-	uint16_t port = (uint16_t)atoi(serverPortStr);
-
-	if (port == 0) {
-		return -1;
-	}
-	port = htons(port); //host bytes para network bytes
-
-	memset(storage, 0, sizeof(*storage));
-
-	struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)storage;
-	addr6->sin6_family = AF_INET6;
-	addr6->sin6_addr = in6addr_any;
-	addr6->sin6_port = port;
-	return 0;
-}
-
 //Parse do endereco informado pelo cliente -> preenche a estrutura do socket
 int addrParse(const char *addrstr, const char *portstr, struct sockaddr_storage *storage) {
 	if (addrstr == NULL || portstr == NULL)
@@ -99,6 +81,132 @@ void handleConnectionResponse(Message *message, ClientState *state, int serverTy
     }
 }
 
+//Faz o parsing do input do cliente no terminal
+void parseUserCommand(Message *sentMessage, char command[BUFSIZE], int* error, int* clientIds) {
+    char *inputs[BUFSIZE];
+    char *token = strtok(command, " ");
+    int count = 0;
+    *error = 0;
+
+    if (token == NULL) {
+        *error = 1;
+        return;
+    }
+
+    // Tokenizar a mensagem
+    while (token != NULL && count < BUFSIZE) {
+        inputs[count++] = token;
+        token = strtok(NULL, " ");
+    }
+
+    memset(sentMessage, 0, sizeof(Message));
+    // Prepara as mensagens que serao enviadas para o servidor de acordo com o input
+    if (strcmp(inputs[0], "kill") == 0) {
+        char payload[BUFSIZE];
+        snprintf(payload, BUFSIZE, "%d", clientIds[0]);
+        setMessage(sentMessage, REQ_DISC, payload);
+    }
+    else if (strcmp(inputs[0], "add") == 0) {
+        if (count != 3 || strlen(inputs[1]) != 10 || 
+            (strcmp(inputs[2], "0") != 0 && strcmp(inputs[2], "1") != 0)) {
+            *error = 1;
+            return;
+        }
+        char payload[BUFSIZE];
+        snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[2]);
+        setMessage(sentMessage, REQ_USRADD, payload);
+        return;
+    }
+    else if (strcmp(inputs[0], "in") == 0 || strcmp(inputs[0], "out") == 0) {
+        if (count != 2 || strlen(inputs[1]) != 10) {
+            *error = 1;
+            return;
+        }
+        char payload[BUFSIZE];
+        snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[0]);
+        setMessage(sentMessage, REQ_USRACCESS, payload);
+    }
+    else if (strcmp(inputs[0], "find") == 0) {
+        if (count < 2) {
+            *error = 1;
+            return;
+        }
+        setMessage(sentMessage, REQ_USRLOC, inputs[1]);
+    }
+    else if (strcmp(inputs[0], "inspect") == 0) {
+        if (count != 3 || strlen(inputs[1]) != 10) {
+            *error = 1;
+            return;
+        }
+        char payload[BUFSIZE];
+        snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[2]);
+        setMessage(sentMessage, REQ_LOCLIST, payload);
+    }
+    else {
+        *error = 1;
+        fputs("error: command not found\n", stdout);
+    }
+}
+
+// Realiza as acoes finais para o cliente
+void handleReceivedData(struct Message* receivedData, int serverType) {
+    switch(receivedData->type) {
+        static char lastUserId[11] = {0};
+
+        case RES_CONN: // Conexao ao servidor
+            printf("New ID: %s\n", receivedData->payload);
+        break;
+
+        case REQ_USRADD: // Resposta do comando 'add'
+            sscanf(receivedData->payload, "%s", lastUserId);
+            puts(receivedData->payload); 
+        break;
+
+        case RES_USRACCESS: // Resposta do comando 'in/out'
+            int lastLoc = atoi(receivedData->payload);
+            printf("Ok. Last location: %d\n", lastLoc);
+        break;
+
+        case RES_USRLOC: // Resposta do comando 'find'
+            printf("Current location: %s\n", receivedData->payload);
+        break;
+
+        case RES_LOCLIST: // Resposta do comando 'inspect'
+            printf("List of people at the specified location: %s\n", receivedData->payload);
+        break;
+
+        case ERROR: // Resposta as mensagens de erros
+            puts(returnErrorMessage(receivedData));
+        break;
+
+        case OK: {
+            char code[3];
+            char userId[11];
+            sscanf(receivedData->payload, "%s %s", code, userId);
+            
+            if (strcmp(code, "02") == 0) {
+                printf("New user added: %s\n", userId); // Usuario adicionado
+            } 
+            else if (strcmp(code, "03") == 0) {
+                printf("User updated: %s\n", userId); // Quando atualiza a permissao do usuario
+            } 
+            else if (strcmp(code, "01") == 0) { // Mensagens quando desconecta dos servers
+                if (serverType == 0) {
+                    printf("SU Successful disconnect\n");
+                } else {
+                    printf("SL Successful disconnect\n");
+                }
+            }
+        }
+        break;
+
+        default: // Mensagem invalida
+            puts("Invalid received message type");
+        break;
+    }
+}
+
+//============= FUNCOES DE SERVIDOR  ==================
 // Funcao utilizada na thread para comunicacao P2P
 void *handlePeerConnection(void *arg) {
     PeerConnection *peerConn = (PeerConnection *)arg;
@@ -140,31 +248,31 @@ void *handlePeerConnection(void *arg) {
                     peerConn->otherPeerConnected = 1;
 
                     // Gera um Id aleatorio para o peer e envia como resposta
-                    peerConn->myId = rand() % 1000;
+                    peerConn->theirId = (rand() % 1000)+1;
                     char pidStr[10];
-                    snprintf(pidStr, sizeof(pidStr), "%d", peerConn->myId);
+                    snprintf(pidStr, sizeof(pidStr), "%d", peerConn->theirId);
                     
                     setMessage(&sendMsg, RES_CONNPEER, pidStr);
                     send(peerConn->socket, &sendMsg, sizeof(Message), 0);
                     
-                    printf("Peer %d connected\n", peerConn->myId);
+                    printf("Peer %d connected\n", peerConn->theirId);
                 break;
                 
                 case RES_CONNPEER:
                     // Recebe o ID e armazena
-                    peerConn->theirId = atoi(receivedMsg.payload);
-                    printf("New Peer ID: %d\n", peerConn->theirId);
+                    peerConn->myId = atoi(receivedMsg.payload);
+                    printf("New Peer ID: %d\n", peerConn->myId);
                     
                     // Se o peer iniciador ainda nao trocou os IDs envia como resposta
                     if (peerConn->isInitiator && !peerConn->hasExchangedIds) {
-                        peerConn->myId = rand() % 1000;
-                        char myPidStr[10];
-                        snprintf(myPidStr, sizeof(myPidStr), "%d", peerConn->myId);
+                        peerConn->theirId = (rand() % 1000)+1;
+                        char pidStr[10];
+                        snprintf(pidStr, sizeof(pidStr), "%d", peerConn->theirId);
                         
-                        setMessage(&sendMsg, RES_CONNPEER, myPidStr);
+                        setMessage(&sendMsg, RES_CONNPEER, pidStr);
                         send(peerConn->socket, &sendMsg, sizeof(Message), 0);
                         
-                        printf("Peer %d connected\n", peerConn->myId);
+                        printf("Peer %d connected\n", peerConn->theirId);
                         peerConn->hasExchangedIds = 1;
                     }
                 break;
@@ -411,115 +519,6 @@ void *handleClientMessages(void *arg) {
     return NULL;
 }
 
-// Procura user no servidor de localizaçao e prepara a mensagem de resposta
-void findUser(LocationServer *server, Message *message, char* userId) {
-    int userIndex = -1;
-    char payload[BUFSIZE];
-
-    printf("REQ_USRLOC %s\n", userId);
-    for(int i = 0; i < server->userCount; i++) {
-        if(strncmp(server->locationUserDatabase[i], userId, 10) == 0) {
-            userIndex = i;
-            break;
-        }
-    }
-
-    if(userIndex == -1) {
-        setMessage(message, ERROR, "18");
-        return;
-    }
-
-    snprintf(payload, BUFSIZE, "%d", server->lastLocationSeen[userIndex]);
-    setMessage(message, RES_USRLOC, payload);
-}
-
-//Faz o parsing do input do cliente no terminal
-void parseUserCommand(Message *sentMessage, char command[BUFSIZE], int* error, int* clientIds) {
-    char *inputs[BUFSIZE];
-    char *token = strtok(command, " ");
-    int count = 0;
-    *error = 0;
-
-    if (token == NULL) {
-        *error = 1;
-        return;
-    }
-
-    // Tokenizar a mensagem
-    while (token != NULL && count < BUFSIZE) {
-        inputs[count++] = token;
-        token = strtok(NULL, " ");
-    }
-
-    memset(sentMessage, 0, sizeof(Message));
-    // Prepara as mensagens que serao enviadas para o servidor de acordo com o input
-    if (strcmp(inputs[0], "kill") == 0) {
-        char payload[BUFSIZE];
-        snprintf(payload, BUFSIZE, "%d", clientIds[0]);
-        setMessage(sentMessage, REQ_DISC, payload);
-    }
-    else if (strcmp(inputs[0], "add") == 0) {
-        if (count != 3 || strlen(inputs[1]) != 10 || 
-            (strcmp(inputs[2], "0") != 0 && strcmp(inputs[2], "1") != 0)) {
-            *error = 1;
-            return;
-        }
-        char payload[BUFSIZE];
-        snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[2]);
-        setMessage(sentMessage, REQ_USRADD, payload);
-        return;
-    }
-    else if (strcmp(inputs[0], "in") == 0 || strcmp(inputs[0], "out") == 0) {
-        if (count != 2 || strlen(inputs[1]) != 10) {
-            *error = 1;
-            return;
-        }
-        char payload[BUFSIZE];
-        snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[0]);
-        setMessage(sentMessage, REQ_USRACCESS, payload);
-    }
-    else if (strcmp(inputs[0], "find") == 0) {
-        if (count < 2) {
-            *error = 1;
-            return;
-        }
-        setMessage(sentMessage, REQ_USRLOC, inputs[1]);
-    }
-    else if (strcmp(inputs[0], "inspect") == 0) {
-        if (count != 3 || strlen(inputs[1]) != 10) {
-            *error = 1;
-            return;
-        }
-        char payload[BUFSIZE];
-        snprintf(payload, BUFSIZE, "%s %s", inputs[1], inputs[2]);
-        setMessage(sentMessage, REQ_LOCLIST, payload);
-    }
-    else {
-        *error = 1;
-        fputs("error: command not found\n", stdout);
-    }
-}
-
-int generateUniqueClientId(int* clientIds, int clientCount) {
-    int newClientId;
-    while (1) {
-        newClientId = (rand() % 1000) + 1;  // Gera Id entre 1 e 1000
-        int idExists = 0;
-        
-        // Check if this ID already exists
-        for (int i = 0; i < clientCount; i++) {
-            if (clientIds[i] == newClientId) {
-                idExists = 1;
-                break;
-            }
-        }
-        
-        if (!idExists) break;
-    }
-    return newClientId;
-}
-
-
 // Funcao auxiliar dos servidores para atuar nas mensagens recebidas dos clientes
 void processServerMessage(UserServer *userServer, LocationServer *locationServer, Message *message, Message *receivedData) {
     char responsePayload[BUFSIZE] = {0};
@@ -542,12 +541,12 @@ void processServerMessage(UserServer *userServer, LocationServer *locationServer
             // Gera o ID do cliente para cada servidor
             int newClientId;
             if (userServer) {
-                newClientId = generateUniqueClientId(userServer->clientIds, userServer->clientCount);
+                newClientId = generateClientId(userServer->clientIds, userServer->clientCount);
                 userServer->clientIds[userServer->clientCount] = newClientId;
                 userServer->clientCount++;
                 printf("Client %d added (Loc %s)\n", newClientId, receivedData->payload);
             } else if (locationServer) {
-                newClientId = generateUniqueClientId(locationServer->clientIds, locationServer->clientCount);
+                newClientId = generateClientId(locationServer->clientIds, locationServer->clientCount);
                 locationServer->clientIds[locationServer->clientCount] = newClientId;
                 locationServer->clientCount++;
                 printf("Client %d added (Loc %s)\n", newClientId, receivedData->payload);
@@ -753,62 +752,45 @@ void processServerMessage(UserServer *userServer, LocationServer *locationServer
     }
 }
 
-// Realiza as acoes finais para o cliente
-void handleReceivedData(struct Message* receivedData, int sock, int serverType) {
-    switch(receivedData->type) {
-        static char lastUserId[11] = {0};
+// Procura user no servidor de localizaçao e prepara a mensagem de resposta
+void findUser(LocationServer *server, Message *message, char* userId) {
+    int userIndex = -1;
+    char payload[BUFSIZE];
 
-        case RES_CONN: // Conexao ao servidor
-            printf("New ID: %s\n", receivedData->payload);
-        break;
+    printf("REQ_USRLOC %s\n", userId);
+    for(int i = 0; i < server->userCount; i++) {
+        if(strncmp(server->locationUserDatabase[i], userId, 10) == 0) {
+            userIndex = i;
+            break;
+        }
+    }
 
-        case REQ_USRADD: // Resposta do comando 'add'
-            sscanf(receivedData->payload, "%s", lastUserId);
-            puts(receivedData->payload); 
-        break;
+    if(userIndex == -1) {
+        setMessage(message, ERROR, "18");
+        return;
+    }
 
-        case RES_USRACCESS: // Resposta do comando 'in/out'
-            int lastLoc = atoi(receivedData->payload);
-            printf("Ok. Last location: %d\n", lastLoc);
-        break;
+    snprintf(payload, BUFSIZE, "%d", server->lastLocationSeen[userIndex]);
+    setMessage(message, RES_USRLOC, payload);
+}
 
-        case RES_USRLOC: // Resposta do comando 'find'
-            printf("Current location: %s\n", receivedData->payload);
-        break;
-
-        case RES_LOCLIST: // Resposta do comando 'inspect'
-            printf("List of people at the specified location: %s\n", receivedData->payload);
-        break;
-
-        case ERROR: // Resposta as mensagens de erros
-            puts(returnErrorMessage(receivedData));
-        break;
-
-        case OK: {
-            char code[3];
-            char userId[11];
-            sscanf(receivedData->payload, "%s %s", code, userId);
-            
-            if (strcmp(code, "02") == 0) {
-                printf("New user added: %s\n", userId); // Usuario adicionado
-            } 
-            else if (strcmp(code, "03") == 0) {
-                printf("User updated: %s\n", userId); // Quando atualiza a permissao do usuario
-            } 
-            else if (strcmp(code, "01") == 0) { // Mensagens quando desconecta dos servers
-                if (serverType == 0) {
-                    printf("SU Successful disconnect\n");
-                } else {
-                    printf("SL Successful disconnect\n");
-                }
+int generateClientId(int* clientIds, int clientCount) {
+    int newClientId;
+    while (1) {
+        newClientId = (rand() % 1000) + 1;  // Gera Id entre 1 e 1000
+        int idExists = 0;
+        
+        // Checa se o Id existe
+        for (int i = 0; i < clientCount; i++) {
+            if (clientIds[i] == newClientId) {
+                idExists = 1;
+                break;
             }
         }
-        break;
-
-        default: // Mensagem invalida
-            puts("Invalid received message type");
-        break;
+        
+        if (!idExists) break;
     }
+    return newClientId;
 }
 
 char* returnErrorMessage(Message *message){

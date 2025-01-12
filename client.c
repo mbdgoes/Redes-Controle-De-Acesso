@@ -113,8 +113,8 @@ int main(int argc, char *argv[]) {
                 Message userResponse, locResponse;
                 recv(userSock, &userResponse, sizeof(Message), 0);
                 recv(locationSock, &locResponse, sizeof(Message), 0);
-                handleReceivedData(&userResponse, userSock, 0);
-                handleReceivedData(&locResponse, locationSock, 1);
+                handleReceivedData(&userResponse, USER_SERVER);
+                handleReceivedData(&locResponse, LOCATION_SERVER);
                 close(userSock);
                 close(locationSock);
                 exit(0);
@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
                 handleConnectionResponse(&receivedMessage, &clientState, 0);
                 firstMessage = 0;
             } else {
-                handleReceivedData(&receivedMessage, userSock, 0);
+                handleReceivedData(&receivedMessage, USER_SERVER);
             }
         }
 
@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
                 handleConnectionResponse(&receivedMessage, &clientState, 1);
                 firstMessage = 0;
             } else {
-                handleReceivedData(&receivedMessage, locationSock, 1);
+                handleReceivedData(&receivedMessage, LOCATION_SERVER);
             }
         }
     }
